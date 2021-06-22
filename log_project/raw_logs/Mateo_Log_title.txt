@@ -1,0 +1,8 @@
+3 May 1900 04:30:00 - General - This is some text
+3 May 1900 04:30:10 - Emergency - SOMETHING BAD
+3 May 1900 04:30:20 - General - Some more text
+3 May 1900 04:30:30 - Emergency - SOME MORE BAD
+3 May 1900 04:30:40 - Low - These are words. I'm putting lots of words in this log.
+3 May 1900 04:30:45 - Medium - Hello. Mateo was here. I am typing words into a log.
+3 May 1900 04:30:50 - High - THIS IS A SUPER BIG DEAL!!!!!
+3 May 1900 04:31:15 - Low - This is a line of interesting text.

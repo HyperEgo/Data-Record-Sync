@@ -6,6 +6,14 @@
 .mf
 /nbproject
 
+# python
+__pycache__/
+vids/
+sdp/
+prac/
+deprecated/
+webserver/
+
 # Gradle
 # ------
 /gradle
@@ -46,5 +54,4 @@ atlassian-ide-plugin.xml
 # Logs
 # ----
 /*.log
-
 

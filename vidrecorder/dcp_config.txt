@@ -1,0 +1,27 @@
+[version_info]
+versionNumber = 0.1.2
+
+[dcp_config]
+disk_A_Location = /mnt/dd1
+disk_B_Location = /mnt/dd2
+defaultSaveLocation = /mnt/dd1
+WS1 = 192.168.5.71
+WS2 = 192.168.5.72
+WS3 = 192.168.5.73
+WS4 = 192.168.5.74
+WS5 = 192.168.5.75
+WS6 = 192.168.5.76
+WS7 = 192.168.5.77
+WS8 = 192.168.5.78
+WS9 = 192.168.5.79
+WS10 = 192.168.5.80
+WS11 = shelter 1 IP
+WS12 = shelter 2 IP
+
+[dev_tools]
+devMode = 1
+devLogCreator = 0
+devDirectory = 1
+devSize = 0
+devEditableSaveLocation = 0
+includePlayback = 1

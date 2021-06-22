@@ -1,0 +1,20 @@
+May  3 04:30:34 icsadmin systemd-resolved[1135]: Using degraded feature set (UDP) for DNS server 1.1.1.1.
+May  3 04:30:37 icsadmin systemd-resolved[1135]: Using degraded feature set (UDP) for DNS server 8.8.8.8.
+May  3 04:30:40 icsadmin systemd-resolved[1135]: Using degraded feature set (TCP) for DNS server 1.1.1.1.
+May  3 04:30:46 icsadmin systemd-resolved[1135]: Using degraded feature set (TCP) for DNS server 8.8.8.8.
+May  3 04:30:52 icsadmin systemd-resolved[1135]: Using degraded feature set (UDP) for DNS server 1.1.1.1.
+May  3 04:30:55 icsadmin systemd-resolved[1135]: Using degraded feature set (UDP) for DNS server 8.8.8.8.
+May  3 04:30:56 icsadmin snapd[1212]: autorefresh.go:467: Cannot prepare auto-refresh change due to a permanent network error: persistent network error: Post https://api.snapcraft.io/v2/snaps/refresh: dial tcp: lookup api.snapcraft.io: Temporary failure in name resolution
+May  3 04:30:58 icsadmin systemd-resolved[1135]: Using degraded feature set (TCP) for DNS server 1.1.1.1.
+May  3 04:31:01 icsadmin systemd-resolved[1135]: Using degraded feature set (TCP) for DNS server 8.8.8.8.
+May  3 04:31:07 icsadmin systemd-resolved[1135]: Using degraded feature set (UDP) for DNS server 1.1.1.1.
+May  3 04:31:10 icsadmin systemd-resolved[1135]: Using degraded feature set (UDP) for DNS server 8.8.8.8.
+May  3 04:31:13 icsadmin systemd-resolved[1135]: Using degraded feature set (TCP) for DNS server 1.1.1.1.
+May  3 04:31:17 icsadmin systemd-resolved[1135]: Using degraded feature set (TCP) for DNS server 8.8.8.8.
+May  3 04:31:23 icsadmin systemd-resolved[1135]: Using degraded feature set (UDP) for DNS server 1.1.1.1.
+May  3 04:31:24 icsadmin snapd[1212]: stateengine.go:150: state ensure error: persistent network error: Post https://api.snapcraft.io/v2/snaps/refresh: dial tcp: lookup api.snapcraft.io: Temporary failure in name resolution
+May  3 04:31:26 icsadmin systemd-resolved[1135]: Using degraded feature set (UDP) for DNS server 8.8.8.8.
+May  3 04:31:29 icsadmin systemd-resolved[1135]: Using degraded feature set (TCP) for DNS server 1.1.1.1.
+May  3 04:31:32 icsadmin systemd-resolved[1135]: Using degraded feature set (TCP) for DNS server 8.8.8.8.
+May  3 04:31:38 icsadmin systemd-resolved[1135]: Using degraded feature set (UDP) for DNS server 1.1.1.1.
+May  3 04:31:41 icsadmin systemd-resolved[1135]: Using degraded feature set (UDP) for DNS server 8.8.8.8.

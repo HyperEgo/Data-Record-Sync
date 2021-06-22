@@ -1,0 +1,50 @@
+# .gitignore
+
+.jar
+.class
+.save
+.mf
+/nbproject
+
+# Gradle
+# ------
+/gradle
+.gradle
+/local.properties
+/build
+/buildSrc/build
+/subprojects/*/build
+/subprojects/docs/src/samples/*/*/build
+/subprojects/internal-android-performance-testing/build-android-libs
+
+# IDEA
+# ----
+.idea
+.shelf
+/*.iml
+/*.ipr
+/*.iws
+/buildSrc/*.iml
+/buildSrc/*.ipr
+/buildSrc/*.iws
+/buildSrc/out
+/out
+/subprojects/*/*.iml
+/subprojects/*/out
+/.teamcity/*.iml
+/.teamcity/target
+
+# Eclipse
+# -------
+*.classpath
+*.project
+*.settings
+/bin
+/subprojects/*/bin
+atlassian-ide-plugin.xml
+
+# Logs
+# ----
+/*.log
+
+

@@ -1,0 +1,13 @@
+﻿
+Data Record and Sync'ing STIG'ed RHEL 7 Install Instructions
+
+Just to be clear on the install instructions for hardened RHEL 7 environment post Nessus and SCAP DCP scans.
+1.	Install NM Autobuild 4.6.1 media, follow install prompts:
+	a.	MEI number = none (press <enter> or let timeout expire)
+	b.	Role Type = “Workstation”
+2.	Run Ansible local plays => sudo (eacct) ansible-playbook /etc/ansible/roles/stigs/stigs.yml
+
+Ansible output should be close to this >> failed (red) = none | skipped (yellow) = ~200+ | ok (green) = ~1000+
+Ansible logs at /var/log/ansible.log
+
+

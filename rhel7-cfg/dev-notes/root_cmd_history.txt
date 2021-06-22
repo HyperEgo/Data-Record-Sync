@@ -1,0 +1,97 @@
+    1  cd /share
+    2  ll
+    3  whoami
+    4  ll
+    5  cd Python-3.9.5
+    6  ll
+    7  pwd
+    8  ll
+    9  ./configure --prefix=/usr/local/bin/python3
+   10  make && make install
+   11  ll /usr/local/bin/
+   12  python3 --version
+   13  pwd
+   14  ll
+   15  cd ..
+   16  python3 --version
+   17  ll
+   18  exit
+   19  cd /etc/ansible/
+   20  vim systems/workstations.yml 
+   21  pwd
+   22  ls
+   23  ls systems/
+   24  vim systems/workstations.yml 
+   25  vim /var/log/ansible.log 
+   26  ansible-playbook roles/stigs/stigs.yml 
+   27  reboot
+   28  history
+   29  cd /etc/ansible/roles/
+   30  ll
+   31  cd stigs/
+   32  ll
+   33  pwd
+   34  exit
+   35  ls
+   36  cd /home/eacct/Downloads/
+   37  ls
+   38  ls /data_local/
+   39  ls /data_local/repo/
+   40  ls /data_local/repo/IBCS-other/
+   41  ls /data_local/repo/IBCS-rhel/
+   42  ls /data_local/repo/IBCS-other/
+   43  ls
+   44  find ./ name "*.rpm"
+   45  ls
+   46  find ./ name "*.rpm" -exclude trash
+   47  man find
+   48  ls
+   49  mv trash ../.
+   50  ls
+   51  find ./ name "*.rpm"
+   52  find ./ -name "*.rpm"
+   53  find ./ -name "*.rpm" -exec mv '{}' /data_local/repo/IBCS-other/. \;
+   54  ls /data_local/repo/IBCS-other/
+   55  cd /data_local/repo/IBCS-other/
+   56  createrepo .
+   57  yum repolist
+   58  yum search git 
+   59  yum clean 
+   60  yum clean all
+   61  yum makecache
+   62  yum search git 
+   63  ls
+   64  ls git-1.8.3.1-23.el7_8.x86_64.rpm 
+   65  cd
+   66  yum search git 
+   67  yum search git*
+   68  vim /etc/yum.repos.d/IBCS-other.repo 
+   69  yum repolist
+   70  yum search git
+   71  ls
+   72  yum install git vlc python3 tkinter
+   73  history  | less
+   74  history  | vim -
+   75  vim steps/sh
+   76  vim steps.sh
+   77  history  | vim -
+   78  vim steps.sh
+   79  yum repolist
+   80  vim steps.sh
+   81  vim /etc/yum.repos.d/IBCS-other.repo
+   82  ls
+   83  vim steps.sh 
+   84  pwd
+   85  l;s
+   86  ls
+   87  mv steps.sh /home/eacct/Downloads/.
+   88  chown eacct:eacct /home/eacct/Downloads/steps.sh 
+   89  git --version
+   90  python3
+   91  yum list tkinter
+   92  yum search  tkinter
+   93  yum list *tkinter
+   94  pip3 --version
+   95  vlc
+   96  yum search  tkinter
+   97  history > ~/Downloads/root_repo_cmds.txt

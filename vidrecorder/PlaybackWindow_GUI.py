@@ -38,7 +38,7 @@ class PlaybackWindow_GUI:
         self.bool_isDirSelected = BooleanVar(False)
         self.selectedDir = " "
 
-
+    
 
 #GUI Elements
 
@@ -62,6 +62,7 @@ class PlaybackWindow_GUI:
         self.playbackWindow.geometry(alignstr)
         self.playbackWindow.resizable(width=False, height=False)
         self.playbackWindow.config(bg= "#383838")
+        self.playbackWindow.protocol('WM_DELETE_WINDOW',self.on_close)
 
         button_OpenButton = tk.Button(self.playbackWindow)
         button_OpenButton["bg"] = "#efefef"
@@ -524,11 +525,16 @@ class PlaybackWindow_GUI:
             d.play()
 
         self.playButton.config(text="Pause")
+        
+    def on_close(self):
+        print('Does this work????')
+        self.playbackWindow.destroy()
 
 def start_vlc_player(player):
     player._Play()
     print('Starting player embedded in frame')
     # print(player)
+
 
 
 

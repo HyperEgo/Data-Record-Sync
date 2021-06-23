@@ -154,9 +154,9 @@ class WorkstationDataRecorder_GUI:
         tkVid(self.new)
 
     def clearAllSources(self):
-        for src in self.sourceEntryList:
-                if(len(src.get()) > 0):
-                    src.delete(0,'end')
+        # for src in self.sourceEntryList:
+        #         if(len(src.get()) > 0):
+        #             src.delete(0,'end')
         self.bool_checkedAllWorkstations.set(False)
         self.bool_useDuration.set(False)
         self.entry_duration.delete(0,'end')
@@ -334,10 +334,10 @@ class WorkstationDataRecorder_GUI:
         elif(update['type'] == 'SDP Download Status'):
             self.updateStatusLabels(update['workstation_info'],record_state='sdp_download')
 
-    def menuNewRecording(self):
-        self.clearAllSources()
-        if((self.config.get('dev_tools','devEditableSaveLocation')) == '1'):
-            self.chooseDirectory()
+    # def menuNewRecording(self):
+    #     self.clearAllSources()
+    #     if((self.config.get('dev_tools','devEditableSaveLocation')) == '1'):
+    #         self.chooseDirectory()
 
     def chooseDirectory(self):
         '''Browse button that allows you to change viddir save location'''

@@ -17,8 +17,19 @@ import sys
 sys.path.append("../log_project")
 import fake_log_generator
 import log_parser
+import threading
+import libs.ToolTips as tooltip
 
 from utils import utils
+import utils.vidlogging as vidlogging
+
+logger = vidlogging.get_logger('RECORD_GUI',filename=g.paths['logfile'])
+vidlogging.test_logger(logger) # TESTING LOGGER
+
+class GuiError(Exception):
+    """A custom exception used to report errors in pulling out values from the gui"""
+    def __init___( self, message, error_type, error_info ):
+        super().__init__(message)
 
 class WorkstationDataRecorder_GUI:
     def __init__(self, root, config):
@@ -89,14 +100,33 @@ class WorkstationDataRecorder_GUI:
         self.numWorkstations = 1
         self.currentWorkstation = 1
 
+        #TODO: light
+        self.img_red = PhotoImage(file = "assets/icons/redLight.gif") 
+        self.img_green = PhotoImage(file = "assets/icons/greenLight.gif")
+        self.img_dark = PhotoImage(file = "assets/icons/noLight.gif")
+        #TODO: light
+
         self.initSources()
         self.makeLists()
         self.populateWindow()
         self.toggleEntry_Duration()
+        
+        # Validate all ip addresses before doing anything
+        self.ping_rnas()
+
+        
 
 #Functions
+
+    def ping_rnas(self):
+        # Validate all ip addresses before doing anything
+        self.clearAllStatusLabels()
+        check_ip_timer = threading.Timer(1.0, self.validate_ip_address_list)
+        check_ip_timer.daemon = True
+        check_ip_timer.start()
+        
     def createStatusLabels(self):
-        xPos = 500
+        xPos = 525 #TODO: light
         yPos = 275
         for lbl in self.statusLabelList:
             lbl["justify"] = "center"
@@ -127,10 +157,10 @@ class WorkstationDataRecorder_GUI:
                 elif record_state == 'started' and not w['is_recording']: # w['filestats']['size']
                     text = f"Establishing connection. Please wait..."
                 elif record_state == 'started' and w['is_recording']:
-                    text = f"Recording... | File size: {utils.bytesto(filestats['size'], 'mb'):.2f} MB"
+                    text = f"Recording... | File size: {utils.bytesto_string(filestats['size'])}"
                     self.stopWatch.Start()
                 elif record_state == 'stopped':
-                    text = f"Stopped | File size: {utils.bytesto(filestats['size'], 'mb'):.2f} MB"
+                    text = f"Stopped | File size: {utils.bytesto_string(filestats['size'])}"
                     # self.stopWatch.Stop()
                 else:
                     text = 'ERROR: Unknown recording state in gui'
@@ -172,32 +202,81 @@ class WorkstationDataRecorder_GUI:
         # self.entry_SaveDir.insert(0,g.paths['viddir'])
         # self.entry_SaveDir["state"] = DISABLED
 
+        self.clearAllStatusLabels()
+            
+    def clearAllStatusLabels(self):
         for lbl in self.statusLabelList:
             lbl.configure(text=' ')
 
-    def toggleRecord(self):
-        for src in self.sourceInputList:
-            text = src.get()
-            if(len(text) > 0):
-                if(not self.recorder or self.recorder.is_recording == False):
-                    self.startRecordAll()
-                else:
-                    self.stopRecordAll()
-                break
+    def toggleRecord(self): # callback for Record/Stop button
+        if(not self.recorder or self.recorder.is_recording == False):
+            self.startRecordAll()
+        else:
+            self.stopRecordAll()
+            
+    def validate_ip_address_list(self, update_labels=True):
+        ips = {}
+        ping_rna_onlaunch = g.advanced['ping_rna_onlaunch']
+        ping_rna_timeout_sec = g.advanced['ping_rna_timeout_sec']
+        for idx,src in enumerate(self.ipAddresses):
+            ip = src.get()
+            
+            (valid_format,valid_ping) = utils.validate_ip(
+                ip, run_ping_test=ping_rna_onlaunch, ping_timeout_sec=ping_rna_timeout_sec)
+            ping_result = "success" if valid_ping else "failed"
+            logger.info(f'Ping test: {ip} ... {ping_result}')
 
+            ips[ip] = {'wid': idx+1, 'valid_format': valid_format, 'valid_ping': valid_ping}
+            if update_labels:
+                self.update_ip_status_labels(ips[ip],ping_rna_onlaunch)
+        return ips
+    
+    def update_ip_status_labels(self,ip_info,ping_test=False):
+        text = None
+        lightStatus = 0 #TODO: light
+        if not ip_info['valid_format']:
+            text = 'Invalid IP formatting. Check dcp_config.txt'
+        elif ping_test:
+            if not ip_info['valid_ping']:
+                text = 'Not connected. Ping test failed.'
+                lightStatus = 1     #TODO: light         
+            else:
+                text = 'Connected.'
+                lightStatus = 2 #TODO: light
+        if text:
+            lbl_idx = ip_info['wid']-1
+            if lbl_idx >= 0 and lbl_idx < len(self.statusLabelList):
+                lbl = self.statusLabelList[lbl_idx]
+                lbl.configure(text = text)
+                self.update_ping_light(self.pingLightList[lbl_idx],self.pingLightTTPList[lbl_idx],lightStatus) #TODO: light
+    
+    #TODO: light------------------------------------------]
+    def update_ping_light(self,imageObj,tooltipObj,status):
+        '''
+        Updates the red/green/dark icon displayed next to the workstation status labels. The color and tooltip text will change according to the workstation IP status.
+        '''
+        if status == 2:      
+            imageObj["image"] = self.img_green 
+            tooltipObj = tooltip.CreateToolTip(imageObj, "Connected") 
+        elif status == 1:
+            imageObj["image"] = self.img_red 
+            tooltipObj = tooltip.CreateToolTip(imageObj, "Not Connected")
+        else:
+            imageObj["image"] = self.img_dark 
+            tooltipObj = tooltip.CreateToolTip(imageObj, "Invalid")
+    #TODO: light------------------------------------------]
+    
     def get_selected_workstations(self,savedir):
         workstations = []
-        for src in self.sourceInputList:
+
+        for idx,src in enumerate(self.ipAddresses):
             ip = src.get()
-            idx = self.sourceInputList.index(src)
-            if(self.workstationBoolList[idx].get() == True):
-                # TODO: wsDirectory = savedir + "/" + "WS_" + text
-                # wsDirectory = savedir
+            if(self.workstationBoolList[idx].get() == True): # if checkbox for workstation is selected
                 workstations.append(
                     {
-                        "id": int(ip[-2:]) % 70,
+                        "id": int(ip[-2:]) % 70 if len(ip) > 2 else -1,
                         "ip": ip,
-                        "restart_interval": 5,
+                        "restart_interval": 5, # TODO TODAY -- put this in dcp_config
                         # "dir": wsDirectory
                     }
                 )
@@ -206,50 +285,89 @@ class WorkstationDataRecorder_GUI:
 
 
     def startRecordAll(self):
+
+        logger.debug(f'startRecordAll')
+        
+        # Get and validate duration from gui
+        self.duration = 0
+        if(self.bool_useDuration.get() == True):
+            value,valid = self.get_float_from_entrybox(self.entry_duration,"Duration")
+            logger.debug(f'Duration: value -> {value} -- valid -> {valid}')
+            if valid:
+                if value > 0:
+                    self.duration = value
+                else:
+                    messagebox.showinfo('Input Error', f'Invalid Duration Value. Must be greater then 0', parent=self.root)
+                    return
+            else:
+                return
+
+        # Make sure user has selected workstations to be recorded before proceeding
+        # Get list of selected workstations
+        workstations = self.get_selected_workstations(savedir=self.parentDirectory)
+        if len(workstations) <= 0:
+            messagebox.showinfo('Input Error', 'No workstations selected', parent=self.root)
+            return
+        logger.debug(f'selected workstations: {workstations}')
+
+        # Mark start of record time
+        self.begin = time.localtime()
+
+        # Create the almighty VidRecorder object -- this guys manages all of the DeviceRecorders
+        if (self.recorder is None):
+            use_dev_dir  = self.config.get('dev_tools','devDirectory') == "1"
+            self.recorder = VidRecorder(workstations, savedir=self.parentDirectory, sdpdir=g.paths['sdpdir'],
+                                        duration=self.duration, update_callback=self.on_vidrecorder_update, use_dev_dir=use_dev_dir)
+            
+        # Clear all of the status labels before trying to start the recorders
+        self.clearAllStatusLabels()
+        
         try:
-            for chk in self.chkBoxList:
-                chk["state"]= DISABLED
-
-            self.begin = time.localtime()
-
-            # Get list of selected workstations
-            workstations = self.get_selected_workstations(savedir=self.parentDirectory)
-
-            # Create directory structure associated with workstations
-            # workstations = self.create_directory_structure(self.parentDirectory,workstations)
-
-            # Get duration from gui
-            self.duration = 0
-            if(self.bool_useDuration.get() == True):
-                self.duration = float(self.entry_duration.get())
-
-            print(self.recorder)
-            if (self.recorder is None):
-                use_dev_dir  = self.config.get('dev_tools','devDirectory') == "1"
-                self.recorder = VidRecorder(workstations, savedir=self.parentDirectory, sdpdir=g.paths['sdpdir'],
-                                            duration=self.duration, update_callback=self.on_vidrecorder_update, use_dev_dir=use_dev_dir)
-
-            print(self.recorder)
             if not self.recorder.is_recording:
                 self.recorder.start()
-                # self.stopWatch.Reset()
-                # self.stopWatch.Start()
-                self.bool_IsRecording = True
-                self.button_Record["text"] = "Stop"
-            else:
-                self.stopWatch.Reset()
-                #self.stopWatch.Start()
-                self.button_Record["text"] = "Stop"
+
+                # if recorder successfully starts
+                if self.recorder and self.recorder.is_recording:
+                    # Put GUI in 'record start' state
+                    self.bool_IsRecording = True
+                    self.button_Record["text"] = "Stop"
+                    # Disable any gui controls that shouldn't be available during recording operation
+                    for chk in self.chkBoxList:
+                        chk["state"]= DISABLED
+
         except:
             print("Unable to begin recording. Start Recording command failed.")
             messagebox.showinfo('Start Command Failure', "Unable to begin recording.", parent=self.root)
-            self.clearAllSources()
+            
+            # Put GUI in 'record stop' state
+            self.bool_IsRecording = False
+            self.button_Record["text"] = "Record"
+            for chk in self.chkBoxList:
+                chk['state'] = NORMAL
+            self.stopWatch.Reset()
+
+
+    def get_float_from_entrybox(self,box,label):
+        value = None
+        valid = False
+        try:
+            value = float(box.get())
+            valid = True
+        except ValueError as e:
+            messagebox.showinfo('Input Error', f'Invalid {label} Value', parent=self.root)
+            box.delete(0,'end')
+        return value,valid
 
     def stopRecordAll(self):
 
+        logger.debug(f'stopRecordAll')
+        logger.debug(self.recorder)
+        logger.debug(f'is_recording: {self.recorder.is_recording}' if self.recorder else "recorder is None")
+        
         # Stop the vidrecorder
         if (self.recorder and self.recorder.is_recording):
-            print(f'duration: {self.recorder.duration}')
+            logger.debug(f'duration: {self.recorder.duration}')
+            logger.debug(f'self.recorder.is_recording is True -- calling self.recorder.stop()')
             self.recorder.stop()
 
         #Delete session directory if nothing was recorded.
@@ -262,7 +380,7 @@ class WorkstationDataRecorder_GUI:
                 fake_log_generator.generate_log(self.begin, self.end, dir_path=self.recorder.sessionDirectory + "/logs/")
             # self.stopWatch.Stop()
             self.bool_IsRecording = False
-            # self.button_Record["text"] = "Record"
+            self.button_Record["text"] = "Record"
 
         self.recorder = None
 
@@ -270,10 +388,21 @@ class WorkstationDataRecorder_GUI:
         # update gui with info if needed
         pass
 
+    def deleteOldestData(self):
+        files = os.listdir(g.paths["viddir"])
+        sorted_files = sorted(files)
+        if(len(sorted_files)>1):
+            shutil.rmtree(sorted_files[0])
+        else:
+            #TODO: Delete the earliest files in each WS directory.
+            pass  
+    
+
     def on_vidrecorder_update(self,update):
+        print(f'===================on_vidrecorder_update -- {update["type"]}')
         if (update['type'] == 'Update'):
             workstation_info = update['workstation_info']
-            
+
             self.updateStatusLabels(workstation_info,record_state='started')
 
             hdd = update['diskstats']
@@ -290,12 +419,14 @@ class WorkstationDataRecorder_GUI:
                 self.label_HDD_Space["fg"] = "red"
                 if g.paths['viddir'] == "/mnt/dd1":
                     self.label_HDD_Message_A['text']= "Limit Reached - Overwriting Disk A"
+                    self.deleteOldestData() #TODO: Make sure this is only the case if this drive is being used.
             elif ((hdd_1.free / 2**30)) < 450.00:
                 self.label_HDD_Space["fg"] = "#e0d900"
             if ((hdd_2.free / 2**30)) < 350.00:
                 self.label_HDD_Space_2["fg"] = "red"
                 if g.paths['viddir'] == "/mnt/dd2":
                     self.label_HDD_Message_B['text']= "Limit Reached - Overwriting Disk B"
+                    self.deleteOldestData() #TODO: Make sure this is only the case if this drive is being used.
             elif ((hdd_2.free / 2**30)) < 450.00:
                 self.label_HDD_Space_2["fg"] = "#e0d900"
 
@@ -303,10 +434,10 @@ class WorkstationDataRecorder_GUI:
             print('---------------------------------')
             print('RECORDING STARTED -- update to gui here')
             print('---------------------------------')
-            
+
             # Update stop watch
             self.stopWatch.Reset()
-            
+
         elif(update['type'] == 'Recording stopped'):
             print('---------------------------------')
             print('RECORDING STOPPED -- update to gui here')
@@ -323,21 +454,16 @@ class WorkstationDataRecorder_GUI:
 
             # Update status labels
             self.updateStatusLabels(workstation_info,record_state='stopped')
-            
+
             # Update stop watch
             self.stopWatch.Stop()
-            
+
             self.stopRecordAll()
 
 
 
         elif(update['type'] == 'SDP Download Status'):
             self.updateStatusLabels(update['workstation_info'],record_state='sdp_download')
-
-    # def menuNewRecording(self):
-    #     self.clearAllSources()
-    #     if((self.config.get('dev_tools','devEditableSaveLocation')) == '1'):
-    #         self.chooseDirectory()
 
     def chooseDirectory(self):
         '''Browse button that allows you to change viddir save location'''
@@ -466,11 +592,11 @@ class WorkstationDataRecorder_GUI:
                                 self.label_source7,
                                 self.label_source8,
                                 self.label_source9,
-                                self.label_source10,
-                                self.label_source11,
-                                self.label_source12]
+                                self.label_source10]
+                                # self.label_source11,
+                                # self.label_source12]
 
-        self.sourceInputList = [self.source1,
+        self.ipAddresses = [self.source1,
                                 self.source2,
                                 self.source3,
                                 self.source4,
@@ -479,9 +605,9 @@ class WorkstationDataRecorder_GUI:
                                 self.source7,
                                 self.source8,
                                 self.source9,
-                                self.source10,
-                                self.source11,
-                                self.source12]
+                                self.source10]
+                                # self.source11,
+                                # self.source12]
 
         self.sourceEntryList = [self.sourceEntry1,
                                 self.sourceEntry2,
@@ -492,9 +618,9 @@ class WorkstationDataRecorder_GUI:
                                 self.sourceEntry7,
                                 self.sourceEntry8,
                                 self.sourceEntry9,
-                                self.sourceEntry10,
-                                self.sourceEntry11,
-                                self.sourceEntry12]
+                                self.sourceEntry10]
+                                # self.sourceEntry11,
+                                # self.sourceEntry12]
 
         self.workstationBoolList = [self.bool_WS1,
                                     self.bool_WS2,
@@ -505,9 +631,9 @@ class WorkstationDataRecorder_GUI:
                                     self.bool_WS7,
                                     self.bool_WS8,
                                     self.bool_WS9,
-                                    self.bool_WS10,
-                                    self.bool_WS11,
-                                    self.bool_WS12]
+                                    self.bool_WS10]
+                                    # self.bool_WS11,
+                                    # self.bool_WS12]
 
         self.chkBoxList = [self.chk_WS1,
                            self.chk_WS2,
@@ -518,9 +644,9 @@ class WorkstationDataRecorder_GUI:
                            self.chk_WS7,
                            self.chk_WS8,
                            self.chk_WS9,
-                           self.chk_WS10,
-                           self.chk_WS11,
-                           self.chk_WS12]
+                           self.chk_WS10]
+                        #    self.chk_WS11,
+                        #    self.chk_WS12]
 
         self.statusLabelList = [self.label_ws1_recordingStatus,
                                 self.label_ws2_recordingStatus,
@@ -531,9 +657,33 @@ class WorkstationDataRecorder_GUI:
                                 self.label_ws7_recordingStatus,
                                 self.label_ws8_recordingStatus,
                                 self.label_ws9_recordingStatus,
-                                self.label_ws10_recordingStatus,
-                                self.label_ws11_recordingStatus,
-                                self.label_ws12_recordingStatus]
+                                self.label_ws10_recordingStatus]
+                                # self.label_ws11_recordingStatus,
+                                # self.label_ws12_recordingStatus]
+        
+        self.pingLightList = [self.img_WS1,
+                              self.img_WS2,
+                              self.img_WS3,
+                              self.img_WS4,
+                              self.img_WS5,
+                              self.img_WS6,
+                              self.img_WS7,
+                              self.img_WS8,
+                              self.img_WS9,
+                              self.img_WS10]
+
+        self.pingLightTTPList = [self.img_WS1_ttp,
+                                self.img_WS2_ttp,
+                                self.img_WS3_ttp,
+                                self.img_WS4_ttp,
+                                self.img_WS5_ttp,
+                                self.img_WS6_ttp,
+                                self.img_WS7_ttp,
+                                self.img_WS8_ttp,
+                                self.img_WS9_ttp,
+                                self.img_WS10_ttp]
+
+
     def initSources(self):
         self.label_source1=tk.Label(self.root)
         self.label_source1.place(x=100,y=270,width=121,height=30)
@@ -541,6 +691,11 @@ class WorkstationDataRecorder_GUI:
         self.sourceEntry1.place(x=220,y=270,width=200,height=30)
         self.chk_WS1=tk.Checkbutton(self.root)
         self.chk_WS1.place(x=425,y=270,width=70,height=30)
+        #TODO: light        
+        self.img_WS1 = Label(self.root,image=self.img_dark,borderwidth=0)
+        self.img_WS1.place(x=500,y=275)
+        self.img_WS1_ttp = tooltip.CreateToolTip(self.img_WS1, '')
+        #TODO: light
 
         self.label_source2=tk.Label(self.root)
         self.label_source2.place(x=100,y=305,width=121,height=30)
@@ -548,6 +703,11 @@ class WorkstationDataRecorder_GUI:
         self.sourceEntry2.place(x=220,y=305,width=200,height=30)
         self.chk_WS2=tk.Checkbutton(self.root)
         self.chk_WS2.place(x=425,y=305,width=70,height=30)
+        #TODO: light        
+        self.img_WS2 = Label(self.root,image=self.img_dark,borderwidth=0)
+        self.img_WS2.place(x=500,y=310)
+        self.img_WS2_ttp = tooltip.CreateToolTip(self.img_WS2, '')
+        #TODO: light
 
         self.label_source3=tk.Label(self.root)
         self.label_source3.place(x=100,y=340,width=121,height=30)
@@ -555,6 +715,11 @@ class WorkstationDataRecorder_GUI:
         self.sourceEntry3.place(x=220,y=340,width=200,height=30)
         self.chk_WS3=tk.Checkbutton(self.root)
         self.chk_WS3.place(x=425,y=340,width=70,height=30)
+        #TODO: light        
+        self.img_WS3 = Label(self.root,image=self.img_dark,borderwidth=0)
+        self.img_WS3.place(x=500,y=345)  
+        self.img_WS3_ttp = tooltip.CreateToolTip(self.img_WS3, '')
+        #TODO: light
 
         self.label_source4=tk.Label(self.root)
         self.label_source4.place(x=100,y=375,width=121,height=30)
@@ -562,6 +727,11 @@ class WorkstationDataRecorder_GUI:
         self.sourceEntry4.place(x=220,y=375,width=200,height=30)
         self.chk_WS4=tk.Checkbutton(self.root)
         self.chk_WS4.place(x=425,y=375,width=70,height=30)
+        #TODO: light        
+        self.img_WS4 = Label(self.root,image=self.img_dark,borderwidth=0)
+        self.img_WS4.place(x=500,y=380)     
+        self.img_WS4_ttp = tooltip.CreateToolTip(self.img_WS4, '')
+        #TODO: light
 
         self.label_source5=tk.Label(self.root)
         self.label_source5.place(x=100,y=410,width=121,height=30)
@@ -569,6 +739,11 @@ class WorkstationDataRecorder_GUI:
         self.sourceEntry5.place(x=220,y=410,width=200,height=30)
         self.chk_WS5=tk.Checkbutton(self.root)
         self.chk_WS5.place(x=425,y=410,width=70,height=30)
+        #TODO: light        
+        self.img_WS5 = Label(self.root,image=self.img_dark,borderwidth=0)
+        self.img_WS5.place(x=500,y=415)      
+        self.img_WS5_ttp = tooltip.CreateToolTip(self.img_WS5, '')
+        #TODO: light
 
         self.label_source6=tk.Label(self.root)
         self.label_source6.place(x=100,y=445,width=121,height=30)
@@ -576,6 +751,11 @@ class WorkstationDataRecorder_GUI:
         self.sourceEntry6.place(x=220,y=445,width=200,height=30)
         self.chk_WS6=tk.Checkbutton(self.root)
         self.chk_WS6.place(x=425,y=445,width=70,height=30)
+        #TODO: light        
+        self.img_WS6 = Label(self.root,image=self.img_dark,borderwidth=0)
+        self.img_WS6.place(x=500,y=450)      
+        self.img_WS6_ttp = tooltip.CreateToolTip(self.img_WS6, '')
+        #TODO: light
 
         self.label_source7=tk.Label(self.root)
         self.label_source7.place(x=100,y=480,width=121,height=30)
@@ -583,6 +763,11 @@ class WorkstationDataRecorder_GUI:
         self.sourceEntry7.place(x=220,y=480,width=200,height=30)
         self.chk_WS7=tk.Checkbutton(self.root)
         self.chk_WS7.place(x=425,y=480,width=70,height=30)
+        #TODO: light        
+        self.img_WS7 = Label(self.root,image=self.img_dark,borderwidth=0)
+        self.img_WS7.place(x=500,y=485)       
+        self.img_WS7_ttp = tooltip.CreateToolTip(self.img_WS7, '')
+        #TODO: light
 
         self.label_source8=tk.Label(self.root)
         self.label_source8.place(x=100,y=515,width=121,height=30)
@@ -590,6 +775,11 @@ class WorkstationDataRecorder_GUI:
         self.sourceEntry8.place(x=220,y=515,width=200,height=30)
         self.chk_WS8=tk.Checkbutton(self.root)
         self.chk_WS8.place(x=425,y=515,width=70,height=30)
+        #TODO: light        
+        self.img_WS8 = Label(self.root,image=self.img_dark,borderwidth=0)
+        self.img_WS8.place(x=500,y=520)      
+        self.img_WS8_ttp = tooltip.CreateToolTip(self.img_WS8, '')
+        #TODO: light
 
         self.label_source9=tk.Label(self.root)
         self.label_source9.place(x=100,y=550,width=121,height=30)
@@ -597,6 +787,11 @@ class WorkstationDataRecorder_GUI:
         self.sourceEntry9.place(x=220,y=550,width=200,height=30)
         self.chk_WS9=tk.Checkbutton(self.root)
         self.chk_WS9.place(x=425,y=550,width=70,height=30)
+        #TODO: light        
+        self.img_WS9 = Label(self.root,image=self.img_dark,borderwidth=0)
+        self.img_WS9.place(x=500,y=555)     
+        self.img_WS9_ttp = tooltip.CreateToolTip(self.img_WS9, '')
+        #TODO: light
 
         self.label_source10=tk.Label(self.root)
         self.label_source10.place(x=100,y=585,width=121,height=30)
@@ -604,6 +799,11 @@ class WorkstationDataRecorder_GUI:
         self.sourceEntry10.place(x=220,y=585,width=200,height=30)
         self.chk_WS10=tk.Checkbutton(self.root)
         self.chk_WS10.place(x=425,y=585,width=70,height=30)
+        #TODO: light        
+        self.img_WS10 = Label(self.root,image=self.img_dark,borderwidth=0)
+        self.img_WS10.place(x=500,y=590)   
+        self.img_WS10_ttp = tooltip.CreateToolTip(self.img_WS10, '')
+        #TODO: light
 
         self.label_source11=tk.Label(self.root)
         #self.label_source11.place(x=100,y=625,width=121,height=30)
@@ -618,6 +818,19 @@ class WorkstationDataRecorder_GUI:
         #self.sourceEntry12.place(x=220,y=660,width=200,height=30)
         self.chk_WS12=tk.Checkbutton(self.root)
         #self.chk_WS12.place(x=425,y=660,width=70,height=30)
+
+        #TODO: light
+        self.update_ping_light(self.img_WS1, self.img_WS1_ttp, 0) 
+        self.update_ping_light(self.img_WS2, self.img_WS2_ttp, 0) 
+        self.update_ping_light(self.img_WS3, self.img_WS3_ttp, 0) 
+        self.update_ping_light(self.img_WS4, self.img_WS4_ttp, 0) 
+        self.update_ping_light(self.img_WS5, self.img_WS5_ttp, 0) 
+        self.update_ping_light(self.img_WS6, self.img_WS6_ttp, 0) 
+        self.update_ping_light(self.img_WS7, self.img_WS7_ttp, 0) 
+        self.update_ping_light(self.img_WS8, self.img_WS8_ttp, 0) 
+        self.update_ping_light(self.img_WS9, self.img_WS9_ttp, 0)
+        self.update_ping_light(self.img_WS10,self.img_WS10_ttp,0)
+        #TODO: light
 
 
     def populateWindow(self):
@@ -670,7 +883,7 @@ class WorkstationDataRecorder_GUI:
         self.label_HDD_Status["background"] = "dark gray"
         self.label_HDD_Status.place(x=5,y=35)
         self.label_HDD_Status["fg"] = "black"
-        hdd_1 = shutil.disk_usage('/mnt/dd1')
+        hdd_1 = shutil.disk_usage('/mnt/dd1') # TODO TODAY
         self.label_HDD_Status["text"]= f"Disk A -Free Space: "#{(hdd.free / 2**30):.2f} GB"
         self.label_HDD_Space = tk.Label(self.statusFrame)
         self.label_HDD_Space["background"] = "dark gray"
@@ -688,7 +901,7 @@ class WorkstationDataRecorder_GUI:
         self.label_HDD_Status_2["background"] = "dark gray"
         self.label_HDD_Status_2.place(x=5,y=85)
         self.label_HDD_Status_2["fg"] = "black"
-        hdd_2 = shutil.disk_usage('/mnt/dd2')
+        hdd_2 = shutil.disk_usage('/mnt/dd2') # TODO TODAY
         self.label_HDD_Status_2["text"]= f"Disk B -Free Space: "#{(hdd.free / 2**30):.2f} GB"
         self.label_HDD_Space_2 = tk.Label(self.statusFrame)
         self.label_HDD_Space_2["background"] = "dark gray"
@@ -708,6 +921,8 @@ class WorkstationDataRecorder_GUI:
         #file.add_command(label="New Recording", command= self.menuNewRecording)
         if(g.config.get('dev_tools','includePlayback') == '1'):
             file.add_command(label="Open Playback", command= lambda: self.openPlayback(playbackGUI))
+            file.add_separator()
+        file.add_command(label="Ping RNAs", command= self.ping_rnas)
         file.add_separator()
         file.add_command(label="Exit", command= self.root.quit)
         menubar.add_cascade(label="File", menu=file)
@@ -809,8 +1024,7 @@ class WorkstationDataRecorder_GUI:
         self.entry_duration["textvariable"] = self.duration
         self.entry_duration.place(x=390,y=205,width=70,height=25)
 
-        for src in self.sourceInputList:
-            idx = self.sourceInputList.index(src)
+        for idx,src in enumerate(self.ipAddresses):
             cfgText = f"WS{idx+1}"
             src.set(self.config.get('dcp_config',cfgText))
         for lbl in self.sourceLabelList:
@@ -834,7 +1048,7 @@ class WorkstationDataRecorder_GUI:
             ent["font"] = ft
             ent["fg"] = "#333333"
             ent["justify"] = "center"
-            ent["textvariable"] = self.sourceInputList[idx]
+            ent["textvariable"] = self.ipAddresses[idx]
             ent["state"] = DISABLED
         for chk in self.chkBoxList:
             idx = self.chkBoxList.index(chk)

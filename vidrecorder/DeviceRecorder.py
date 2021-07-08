@@ -1,5 +1,4 @@
 import threading
-import logging
 import random
 import time
 import subprocess
@@ -13,18 +12,21 @@ from requests.auth import HTTPBasicAuth
 from pathlib import Path
 
 from datetime import datetime
-from utils.filemonitor import FileMonitor
 from utils.dirmonitor import DirMonitor
+from global_vars import g
+import utils.vidlogging as vidlogging
 
-format = "%(asctime)s: %(message)s"
-logging.basicConfig(format=format, level=logging.INFO,
-                    datefmt="%H:%M:%S")
+# format = "%(asctime)s: %(message)s"
+# logging.basicConfig(format=format, level=logging.INFO,
+#                     datefmt="%H:%M:%S")
+
+logger = vidlogging.get_logger(__name__,filename=g.paths['logfile'])
 
 class DeviceRecorder():
   ''' Handles audio and video recording for one workstation
   '''
   # video_file_monitor = None
-  
+
   def __init__(self, workstation_info, sdpdir):
 
     self.id      = int(workstation_info['id'])
@@ -33,26 +35,28 @@ class DeviceRecorder():
     self.restart_interval = workstation_info['restart_interval']
     self.workstation_num = self.id
     self.name = f"Workstation {self.id}"
-    self.vid_basename = f"ws{self.id}.mp4"
-    
+
     # Recording related vars
-    self.video_subprocess_old = None
+    self.vid_basename = f"ws{self.id}.mp4"
     self.video_subprocess = None # subprocess running vlc that is recording video
     self.audio_subprocess = None # subprocess running vlc that is recording audio
     self.started = False
     self.duration = -1
     self.restart_needed = False
     self.kill_sent = False
+    self.kill_count = 0
     self.restart_time = -1
+    self.filestats = None
 
+    # sdp vars
     self.sdp_file = f"ws{self.id}.sdp"
     self.sdp_dir = sdpdir #'./prac/sdp'
     self.sdp_downloaded = False
     
-    self.kill_count = 0
-    self.filestats = None
+    logger.info(f'__init__ -> {self}')
 
   def get_workstation_info(self):
+    '''Returns dict with information about this workstation (or device)'''
     filestats = self.get_filestats()
     w = {
         'id': self.id,
@@ -63,19 +67,20 @@ class DeviceRecorder():
         'sdp_downloaded': self.sdp_downloaded,
         'filestats': filestats}
     return w
-  
+
   def get_filestats(self):
-        filestats = None
-        fullname = os.path.join(self.savedir,self.vid_basename)
-        if os.path.exists(fullname):
-            filestats = {
-              'basename': self.vid_basename,
-              'fullname': fullname,
-              'time': -1,
-              'size': os.path.getsize(fullname),
-            }
-        return filestats
-  
+    '''Returns dict with information about the file that is being recorded for this workstation'''
+    filestats = None
+    fullname = os.path.join(self.savedir,self.vid_basename)
+    if os.path.exists(fullname):
+        filestats = {
+          'basename': self.vid_basename,
+          'fullname': fullname,
+          'time': -1,
+          'size': os.path.getsize(fullname),
+        }
+    return filestats
+
   def start_recording(self, duration=None, monitor=False):
 
     if (self.started):
@@ -84,7 +89,7 @@ class DeviceRecorder():
     self.started = True
     self.duration = duration
 
-    logging.info(f"Thread {self.id} : start recording.")
+    logger.info(f"Thread {self.id} : START recording.")
 
     self.record_video()
     
@@ -100,6 +105,8 @@ class DeviceRecorder():
     return True
 
   def stop_recording(self):
+
+    logger.info(f"Thread {self.id} : STOP recording.")
     # self.quick_info()
     self.kill_video_subprocess()
     # self.quick_info()
@@ -114,39 +121,36 @@ class DeviceRecorder():
     self.audio_subprocess = subprocess.Popen([vlcapp, '--verbose="1"', sdpFile, f'--sout=file/ogg:{self.savedir}/ws{self.id}.ogg'])
 
   def record_video(self):
+    ''' Creates vlc subprocess to record the video using parsed sdp file
+    '''
     vlcapp = '/usr/bin/cvlc'
     sdpFile = f'{self.sdp_dir}/ws{self.id}_parsed.sdp'
     output_file_param = f'--sout=file/ts:{self.savedir}/ws{self.id}.mp4'
-    logging.info('DeviceRecorder::record_video --> ' + sdpFile)
+    logger.debug('record_video --> ' + sdpFile)
 
-    # Kill the vlc subprocess if it is still running
-    # if self.video_subprocess:
-    #   self.kill_video_subprocess()
-      
     # Start the vlc application passing the sdpFile it needs to read the stream correctly
     cmd = f'{vlcapp} --verbose="1" {sdpFile} {output_file_param}'
-    
+
     if self.video_subprocess:
-      logging.info(f'pid: {self.video_subprocess.pid} -- Before')
+      logger.debug(f'pid: {self.video_subprocess.pid} -- Before')
+
     self.video_subprocess = subprocess.Popen([vlcapp,'--verbose="2"', sdpFile, f'--sout=file/ts:{self.savedir}/ws{self.id}.mp4'])
+
     if self.video_subprocess:
-      logging.info(f'pid: {self.video_subprocess.pid} -- After')
+      logger.debug(f'pid: {self.video_subprocess.pid} -- After')
+
     self.kill_sent = False
-    # print(self.video_subprocess)
-    # self.pid = subprocess.Popen(cmd)
-    # self.pid.daemon = True
-  
-  # TODO: Remove returncode, add more info
+
   def quick_info(self):
     info = f'Device: {self.id} -- pid: {self.video_subprocess.pid} -- ' + \
            f'kill_count: {self.kill_count} -- file: {self.vid_basename} -- '
-    logging.info(info)
-    
+    logger.debug(info)
+
   def kill_video_subprocess(self):
-      
+
     if self.video_subprocess:
       # logging.info(f'subprocess pid: {self.video_subprocess.pid} -- kill_count: {self.kill_count} -- Terminating video_subprocess {self.vid_basename}')
-      logging.info('Terminating subprocess')
+      logger.debug('Terminating subprocess')
       self.video_subprocess.terminate()
       self.kill_sent = True
       self.kill_count += 1
@@ -155,7 +159,7 @@ class DeviceRecorder():
        
   def kill_audio_subprocess(self):
     if self.audio_subprocess:
-      logging.info('Terminating audio_subprocess')
+      logger.info('Terminating audio_subprocess')
       self.audio_subprocess.terminate()
       self.audio_subprocess = None
 
@@ -182,9 +186,9 @@ class DeviceRecorder():
 
       if self.kill_sent:
           if self.video_subprocess.poll() is None: # make sure process has finished terminiating before recreating
-              logging.info(f"Waiting for vlc process {self.video_subprocess.pid} to terminate...")
+              logger.debug(f"Waiting for vlc process {self.video_subprocess.pid} to terminate...")
           else:
-              logging.info("Restarting vlc process ...")
+              logger.debug("Restarting vlc process ...")
               self.record_video() # start the vlc process up again
 
 

@@ -12,6 +12,7 @@ import subprocess
 import threading
 import configparser
 from DevicePlayer import DevicePlayer
+from utils import utils
 
 import sys
 sys.path.append("../log_project")
@@ -243,13 +244,7 @@ class PlaybackWindow_GUI:
         return thisTime
 
     def timetranslator(self,sec):
-        timeStr= StringVar()
-        hours = int((sec/60)/60)
-        minutes = int(sec/60)
-        seconds = int(sec-minutes*60.0)
-        fstring = f'{hours:02}:{minutes:02}:{seconds:02}'
-
-        return fstring
+        return utils.timetranslator(sec)
 
 
     def get_longest_video(self):

@@ -13,6 +13,7 @@ sdp/
 prac/
 deprecated/
 webserver/
+.rt/
 
 # Gradle
 # ------

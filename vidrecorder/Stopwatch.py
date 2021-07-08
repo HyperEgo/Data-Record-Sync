@@ -2,6 +2,7 @@ import time
 import tkinter
 from tkinter import Frame, Label, StringVar
 from tkinter.constants import NO, X
+from utils import utils
 
 class StopWatch(Frame):
     def __init__(self,parent=None, **kw):
@@ -22,12 +23,9 @@ class StopWatch(Frame):
         self.setTime(self.elapsedTime)
         l.pack(fill=X,expand=NO,pady=2,padx=2)
 
-    def setTime(self,elap):
-        hours = int((elap/60)/60)
-        minutes = int(elap/60)
-        seconds = int(elap-minutes*60.0)
-        #hseconds = int((elap-minutes*60.0-seconds)*100)
-        self.timeStr.set('%02d:%02d:%02d' % (hours,minutes,seconds))
+    def setTime(self,sec):
+        fstring = utils.timetranslator(sec)
+        self.timeStr.set(fstring)
 
     def Start(self):
         if not self.running:

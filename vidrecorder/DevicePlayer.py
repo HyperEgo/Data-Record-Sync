@@ -3,7 +3,7 @@ import math
 import time
 import threading
 import logging
-import modifiedTKV as tkv2
+import libs.modifiedTKV as tkv2
 from vlc import State
 
 from videoprops import get_video_properties
@@ -28,7 +28,7 @@ class DevicePlayer():
         self.video = video
         self.rootdir = rootdir
         self.set_video(video,rootdir)
-        
+
     def destroy(self):
         if self.vlc_inspect_timer:
             self.vlc_inspect_timer.cancel()
@@ -41,14 +41,14 @@ class DevicePlayer():
         if self.vlc_inspect_timer:
             self.vlc_inspect_timer.cancel()
             self.vlc_inspect_timer = None
-            
-            
+
+
     def set_sync_wait_time(self, sync_wait_time):
         self.sync_wait_time_ms = sync_wait_time
-        
+
     def _play_video(self):
         self.tkv.player.play()
-        
+
     def play(self,time_offset_ms=0):
         print(f'Device: {self.tkv.title} -- sync_wait_time_ms: {self.sync_wait_time_ms}')
         # self.tkv.player.set_time(sync_time_ms)
@@ -56,13 +56,13 @@ class DevicePlayer():
 
         if time_offset_ms >=0 and self.sync_wait_time_ms > time_offset_ms:
             time_tosleep_ms = self.sync_wait_time_ms - time_offset_ms
-            
+
         if time_tosleep_ms >= 0:
             wait_to_play_time = float(self.sync_wait_time_ms)/1000.0
         else:
             wait_to_play_time = 0
             self.tkv.player.set_time(int(time_offset_ms - self.sync_wait_time_ms))
-            
+
         play_timer = threading.Timer(wait_to_play_time, self._play_video)
         play_timer.start()
         # print(f'BEFORE PLAY-- Device: {self.tkv.title} -- get_length(): {self.tkv.player.get_length()}')
@@ -73,12 +73,12 @@ class DevicePlayer():
         if not self.vlc_inspect_timer:
             self.vlc_inspect_timer = threading.Timer(1.0, self.show_vlc_data)
             self.vlc_inspect_timer.start()
-            
+
         # for player in self.tkvList:
         #     thread = threading.Thread(target=start_vlc_player, args=(player,))
         #     thread.start()
         #     self.playButton.config(text="Pause")
-        
+
     # def start_vlc_player(player):
     #     player._Play()
     # print('Starting player embedded in frame')
@@ -90,31 +90,31 @@ class DevicePlayer():
             self.tkv.player.set_time(0)
         except e:
             print(e)
-            
+
         if self.vlc_inspect_timer:
             self.vlc_inspect_timer.cancel()
             self.vlc_inspect_timer = None
-            
+
     def mute(self):
         pass # TODO: Implement this
-            
+
     def is_playing(self):
         return self.tkv.player.is_playing()
-    
+
     def get_length(self):
         vid_props = get_video_properties(self.video)
         return float(vid_props['duration'])*1000 # in milliseconds
         # return self.tkv.player.get_length()
-    
+
     def set_video(self,video,rootdir):
         self.video = video
         self.rootdir = rootdir
         self.start_time = DevicePlayer.get_start_time(self.rootdir)
-        
+
         # Initialize player with new video
         m = self.tkv.Instance.media_new(video)
         self.tkv.player.set_media(m)
-        
+
         # set the window id where to render VLC's video output
         h = self.tkv.videopanel.winfo_id()  # .winfo_visualid()?
         if _isWindows:
@@ -132,7 +132,7 @@ class DevicePlayer():
         else:
             self.tkv.player.set_xwindow(h)  # fails on Windows
         # FIXME: this should be made cross-platform
-        
+
 
     # def jump_to_time(self, timestamp, delta_time=None):
     #     if not delta_time:
@@ -143,15 +143,15 @@ class DevicePlayer():
     #     # print(self.tkv.player.get_time())
     #     pct = delta_time * 1000 /  self.tkv.player.get_length()
     #     self.tkv.player.set_position(pct)
-        
+
     def show_vlc_data(self):
         ''' Crude dump of all vlc knows about file it's playing
         '''
         t = self.tkv
         # t.timeVar.set(delta_time * 1000)
         # t.player.set_time(int(delta_time * 1000))
-        
-        
+
+
         print('------------------------------------------------------------------')
         print(f'Title: {t.title}')
         print(f'length: {t.player.get_length()}')
@@ -165,8 +165,8 @@ class DevicePlayer():
             print(f'fps: {t.player.get_fps()} -- mspf: {(1000 // t.player.get_fps()) or 30}')
         else:
             print(f'fps: {t.player.get_fps()}')
-        
-        
+
+
         # print(f'movie_chapter: {t.player.get_chapter()}')
         # print(f'movie_chapter_count: {t.player.get_chapter_count()}')
         # print(f'movie_title: {t.player.get_title()}')
@@ -224,7 +224,7 @@ class DevicePlayer():
             return (2,3),(433,240)
         elif (nVideos <= 12):
             return (3,4),(325,240)
-    
+
     @staticmethod
     def get_start_time(directory):
         pieces = directory.split("/")
@@ -243,5 +243,4 @@ if __name__ == '__main__':
     tile_dims,frame_dims = DevicePlayer.getdims(5)
     print(tile_dims)
     print(frame_dims)
-    
-    
+

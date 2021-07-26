@@ -25,7 +25,7 @@ class VidDirMonitor(DirMonitor):
     filelist = []
     
     # dev mode
-    if (g.dev_mode == "1" and g.dev_opts['devDirectory'] == "1"):
+    if (g.dev_mode == "1" and g.dev_opts['devDirectory']):
         filelist = os.listdir(self.dirpath)
         filelist.sort()
         for i,f in enumerate(filelist):

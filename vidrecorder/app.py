@@ -11,32 +11,22 @@ from PlaybackWindow_GUI import PlaybackWindow_GUI
 
 import utils.vidlogging as vidlogging
 
+application_name = "Workstation Recorder"
+version_code = "0.1.4"
+version_config = g.config.get('version_info','versionNumber')
+
+# Setup loggers
 logger = vidlogging.get_logger(__name__,filename=g.paths['logfile'])
 vidlogging.test_logger(logger) # TESTING LOGGER
 
-application_name = "Workstation Recorder"
-version_code = "0.1.3"
-version_config = g.config.get('version_info','versionNumber')
-
-# Verify paths
+# Make sure viddir works
 if not os.path.exists(g.paths['viddir']) or not os.path.isdir(g.paths['viddir']):
     logger.error(f'''
 ERROR: defaultSaveLocation in config file does not exist or is not directory.
 Open file 'dcp_config.txt' and alter 'defaultSaveLocation' line
 ''')
     sys.exit(2)
-if not os.path.exists(g.paths['rt']):
-    os.mkdir(g.paths['rt'])
-if not os.path.exists(g.paths['sdpdir']):
-    os.mkdir(g.paths['sdpdir'])
-if not os.path.exists(g.paths['rtlogs']):
-    os.mkdir(g.paths['rtlogs'])
-
-
-# Setup loggers
-# g.log_manager = VidLogger(os.path.join(g.paths['rtlogs'],'dcp.log'))
-# logger = g.log_manager.get_logger(__name__)
-
+    
 # Check version numbers and make sure everything is good to go, exit otherwise
 if (version_code != version_config):
     logger.error(f'version numbers between config file ({version_config}) and code ({version_code}) DO NOT MATCH')
@@ -81,7 +71,7 @@ def main(argv):
             return
 
         elif opt in ('-p', '--playback'):
-            if(g.config.get('dev_tools','includePlayback') == '1'):
+            if(g.dev_opts['includePlayback']):
                 run_app(use_full_gui=False)
             else:
                 print('This version does not support the playback module.')

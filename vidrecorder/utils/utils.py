@@ -21,7 +21,47 @@ def bytesto_string(bytes, bsize=1024):
         return f'{bytesto(b, "mb"):.2f} MB'
     else:
         return f'{bytesto(b, "kb"):.2f} KB'
-    
+
+def str2float(s):
+    '''Converts 'str' to float -- returns float if valid, None if not'''
+    val = None
+    try:
+        val = float(s)
+    except ValueError as e:
+        print(e)
+    return val
+
+def str2int(s):
+    '''Converts 'str' to int -- returns float if valid, None if not'''
+    val = None
+    try:
+        val = int(s)
+    except ValueError as e:
+        print(e)
+    return val
+
+def str2bool(s,trueStrings=["True","1"]):
+    '''Converts 's' to bool -- returns True if member of trueStrings otherwise False'''
+    return s in trueStrings
+
+def convert_config_val(config_val,convert2type,default_val,min_max):
+    '''Converts to config_val to convert2type, also checks min_max constraints
+       if error at any stage will return the default_val
+    '''
+    v = None
+    if convert2type == 'int':
+        v = str2int(config_val)
+    elif convert2type == 'float':
+        v = str2float(config_val)
+    elif convert2type == 'bool':
+        v = str2bool(config_val)
+        return v
+
+    # If numeric validate the min/max
+    if (not v) or (min_max[0] and v < min_max[0]) or (min_max[1] and v > min_max[1]):
+        v = default_val
+
+    return v
 
 def validate_ip(ip, run_ping_test=False, ping_timeout_sec=1):
     '''validates ip formatting and with optional ping test'''

@@ -21,10 +21,9 @@ import log_parser
 
 from os.path import basename, expanduser, isfile, join as joined
 from pathlib import Path
-from BookmarkHandler import BookmarkHandler
 
 from global_vars import g
-
+from libs.BookmarkHandler import BookmarkHandler
 
 class PlaybackWindow_GUI:
 
@@ -39,24 +38,16 @@ class PlaybackWindow_GUI:
         self.bool_isDirSelected = BooleanVar(False)
         self.selectedDir = " "
 
-    
+
 
 #GUI Elements
 
-        self.expandWidth = 1.4375
-        self.expandHeight = 1.4861
-        self.sizeFlag = config.get('dev_tools','devSize')
-        print("Size flag = " + str(self.sizeFlag))
 
         self.playbackWindow = root
         self.playbackWindow.title('Workstation Playback - Version ' + config.get('version_info','versionNumber'))
         width=1600
         height=950
-        # if(self.sizeFlag == '0'):
-        #     width = 2300
-        #     print( "w: " + str(width))
-        #     height = 1412
-        #     print( "h: " + str(height))
+
         screenwidth = self.playbackWindow.winfo_screenwidth()
         screenheight = self.playbackWindow.winfo_screenheight()
         alignstr = '%dx%d+%d+%d' % (width, height, (screenwidth - width) / 2, (screenheight - height) / 2)
@@ -520,7 +511,7 @@ class PlaybackWindow_GUI:
             d.play()
 
         self.playButton.config(text="Pause")
-        
+
     def on_close(self):
         print('Does this work????')
         self.playbackWindow.destroy()

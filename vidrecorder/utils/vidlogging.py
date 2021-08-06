@@ -12,7 +12,7 @@ def get_console_handler():
 
 def get_file_handler(filename=LOG_FILE):
     file_handler = RotatingFileHandler(filename, mode='a', maxBytes=5*1024*1024,
-                                    backupCount=2, encoding=None, delay=0)
+                                    backupCount=10, encoding=None, delay=0) # TODO Add these parameters to dcp_config.txt
     file_handler.setFormatter(FILE_FORMATTER)
     return file_handler
 

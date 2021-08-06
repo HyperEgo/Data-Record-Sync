@@ -12,12 +12,11 @@ from PlaybackWindow_GUI import PlaybackWindow_GUI
 import utils.vidlogging as vidlogging
 
 application_name = "Workstation Recorder"
-version_code = "0.1.4"
+version_code = "0.1.5"
 version_config = g.config.get('version_info','versionNumber')
 
 # Setup loggers
 logger = vidlogging.get_logger(__name__,filename=g.paths['logfile'])
-vidlogging.test_logger(logger) # TESTING LOGGER
 
 # Make sure viddir works
 if not os.path.exists(g.paths['viddir']) or not os.path.isdir(g.paths['viddir']):

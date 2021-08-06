@@ -48,10 +48,12 @@ g.config.read_file(open(r'dcp_config.txt')) #TODO: May need to move the config f
 # Set up paths
 g.paths['exedir'] = os.path.dirname(os.path.realpath(__file__))
 g.paths['viddir'] = g.config.get('dcp_config','defaultSaveLocation')
+g.paths['sessiondir'] = ''
 g.paths['rt']     = os.path.join(g.paths['exedir'],'.rt')
 g.paths['sdpdir'] = os.path.join(g.paths['rt'] ,'sdp')
 g.paths['rtlogs'] = os.path.join(g.paths['rt'],'rtlogs')
 g.paths['logfile'] = os.path.join(g.paths['rtlogs'],'dcp.log')
+g.paths['errfile'] = os.path.join(g.paths['rtlogs'],'err.log')
 g.paths['hdd'] = [
     g.config.get('dcp_config','disk_A_Location'),
     g.config.get('dcp_config','disk_B_Location'),
@@ -68,6 +70,10 @@ if not os.path.exists(g.paths['rtlogs']):
 # Load and verify advanced settings
 g.advanced['ping_rna_onlaunch'] = str2bool(g.config.get('advanced_settings','ping_rna_onlaunch'))
 
+g.advanced['ping_rna_onlaunch_count'] = convert_config_val(
+    config_val=g.config.get('advanced_settings','ping_rna_onlaunch_count'),
+    convert2type='int',default_val=1,min_max=[1,10])
+
 g.advanced['ping_rna_timeout_sec'] = convert_config_val(
     config_val=g.config.get('advanced_settings','ping_rna_timeout_sec'),
     convert2type='int',default_val=1,min_max=[1,10])
@@ -76,20 +82,15 @@ g.advanced['restart_interval'] = convert_config_val(
     config_val=g.config.get('advanced_settings','restart_interval'),
     convert2type='float',default_val=5.0,min_max=[0,100])
 
-# for hdd in g.paths['hdd']:
+g.advanced['video_chunking_enabled'] = str2bool(g.config.get('advanced_settings','video_chunking_enabled'))
 
-# g.storage['size'] = [
+g.advanced['video_chunking_duration_in_minutes'] = convert_config_val(
+    config_val=g.config.get('advanced_settings','video_chunking_duration_in_minutes'),
+    convert2type='float',default_val=60,min_max=[0.5,None])
 
-#     convert_config_val(
-#         config_val=g.config.get('dcp_config','disk_A_Size(GB)'),
-#         convert2type='int',default_val=5.0,min_max=[0,None]),
-
-#     default_size = shutil.disk_usage(g.paths['hdd'][1])
-#     convert_config_val(
-#         config_val=g.config.get('dcp_config','disk_B_Size(GB)'),
-#         convert2type='int',default_val=,min_max=[0,None])
-# ]
-# g.storage['reserve'] = g.config.get('dcp_config','disk_reserve')
+g.advanced['delete_chapters_per_ws'] = convert_config_val(
+    config_val=g.config.get('advanced_settings','delete_chapters_per_ws'),
+    convert2type='int',default_val=1,min_max=[1,None])
 
 g.storage['reserve'] = convert_config_val(
          config_val=g.config.get('dcp_config','disk_reserve'),

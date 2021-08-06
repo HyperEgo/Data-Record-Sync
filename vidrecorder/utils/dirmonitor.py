@@ -1,7 +1,13 @@
 import os
+import sys
 import time
 import threading
+import traceback
 import multiprocessing
+import utils.vidlogging as vidlogging
+from global_vars import g
+
+logger = vidlogging.get_logger(__name__,filename=g.paths['logfile'])
 
 class DirMonitorError(Exception):
     """A custom exception used to report errors in use of DirMonitor class"""
@@ -51,13 +57,19 @@ class DirMonitor:
         while(self.running):
 
             # Collect stats about directory
-            allstats = self.collect_file_stats(t)
+            try:
+                allstats = self.collect_file_stats(t)
 
-            # Do something with stats
-            if self.update_callback:
-                self.update_callback(allstats)
-            # if self.logger:
-            #     self.logger("\n"+output)
+                # Do something with stats
+                if self.update_callback:
+                    self.update_callback(allstats)
+            except:
+                exc_type, exc_value, exc_traceback = sys.exc_info()
+                output = "\n"
+                for s in traceback.format_exception(exc_type,exc_value,exc_traceback):
+                    output += s
+                logger.error(output)
+
 
             # Go to sleep until it's time to wake up and check again
             time.sleep(tinterval)

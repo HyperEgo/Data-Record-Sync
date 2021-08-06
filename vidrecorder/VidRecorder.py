@@ -13,7 +13,6 @@ from utils.dirmonitor import DirMonitor
 import utils.vidlogging as vidlogging
 
 logger = vidlogging.get_logger(__name__,filename=g.paths['logfile'])
-vidlogging.test_logger(logger)
 
 class VidDirMonitor(DirMonitor):
   def __init__(self, dirpath, hz=2, logger=print, update_callback=None):
@@ -90,7 +89,7 @@ class VidRecorder():
           d = DeviceRecorder(self.wslist[i],self.sdpdir)
           w = d.get_workstation_info()
           try:
-              success = d.download_sdp()
+              success, orig_sdp, vid_sdp, aud_sdp = d.download_sdp()
               self.device_list.append(d) # note if the sdp download fails then the device will 
                                          # never be added to list...that is the behavior we want
           except:

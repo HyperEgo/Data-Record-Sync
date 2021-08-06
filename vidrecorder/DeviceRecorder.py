@@ -15,6 +15,7 @@ from datetime import datetime
 from utils.dirmonitor import DirMonitor
 from global_vars import g
 import utils.vidlogging as vidlogging
+from DriveManager import DriveManager
 
 # format = "%(asctime)s: %(message)s"
 # logging.basicConfig(format=format, level=logging.INFO,
@@ -25,34 +26,52 @@ logger = vidlogging.get_logger(__name__,filename=g.paths['logfile'])
 class DeviceRecorder():
   ''' Handles audio and video recording for one workstation
   '''
-  # video_file_monitor = None
 
-  def __init__(self, workstation_info, sdpdir):
+  # class variables shared by all instances of DeviceRecorder
+  best_drive = g.paths['viddir'] # current drive being used
+  device_picking_best_drive = False # only one DeviceRecorder is allowed to make a drive switch at a time, this flag keeps them in check
+
+  def __init__(self, workstation_info, sdpdir, chunk_duration_min=0):
 
     self.id      = int(workstation_info['id'])
+    self.ws_id   = f'ws{self.id:02}'
     self.ip      = workstation_info['ip']
-    self.savedir = workstation_info['dir']
+    self.session_dir_fullpath = workstation_info['dir'] # should be session directory
+    self.session_dir_basename = os.path.basename(self.session_dir_fullpath)
     self.restart_interval = workstation_info['restart_interval']
     self.workstation_num = self.id
     self.name = f"Workstation {self.id}"
-
+    
     # Recording related vars
-    self.vid_basename = f"ws{self.id}.mp4"
     self.video_subprocess = None # subprocess running vlc that is recording video
     self.audio_subprocess = None # subprocess running vlc that is recording audio
     self.started = False
+    self.trying = False
     self.duration = -1
     self.restart_needed = False
     self.kill_sent = False
     self.kill_count = 0
     self.restart_time = -1
     self.filestats = None
+    self.chunk_thread = None
+    self.chunk_duration_min = chunk_duration_min # record video in seperate vid files of length chunk_duration_min, if zero just record one long vid.
+    self.chunk_id = 0
+    self.stop_chunk_at_time = -1
+    if self.chunk_duration_min > 0:
+        self.vid_basename = f"{self.ws_id}_{self.chunk_id:04}_0.mp4"
+    else:
+        self.vid_basename = f"{self.ws_id}.mp4"
+    self.vid_current = os.path.join(self.session_dir_fullpath,self.vid_basename)
+    print(f'self.vid_current: {self.vid_current}')
 
     # sdp vars
-    self.sdp_file = f"ws{self.id}.sdp"
-    self.sdp_dir = sdpdir #'./prac/sdp'
+    self.sdp_file = f"{self.ws_id}.sdp"
+    self.sdp_dir = sdpdir
+    self.sdp_orig  = os.path.join(self.sdp_dir,f'{self.ws_id}.sdp')
+    self.sdp_video = os.path.join(self.sdp_dir,f'{self.ws_id}_video.sdp')
+    self.sdp_audio = os.path.join(self.sdp_dir,f'{self.ws_id}_audio.sdp')
     self.sdp_downloaded = False
-    
+
     logger.info(f'__init__ -> {self}')
 
   def get_workstation_info(self):
@@ -61,17 +80,24 @@ class DeviceRecorder():
     w = {
         'id': self.id,
         'ip': self.ip,
-        'savedir': self.savedir,
+        'session_dir_basename': self.session_dir_basename,
+        'session_dir_fullpath': self.session_dir_fullpath,
         'vid_basename': self.vid_basename,
-        'is_recording': self.started and not self.kill_sent and filestats['size'] > 0,
+        'vid_current' : self.vid_current,  # path to current video file being recorded to
+        'is_recording': self.started and not self.kill_sent and (filestats and filestats['size'] > 0),
         'sdp_downloaded': self.sdp_downloaded,
-        'filestats': filestats}
+        'sdp_orig'    : self.sdp_orig,
+        'sdp_video'   : self.sdp_video,
+        'sdp_audio'   : self.sdp_audio,
+        'filestats': filestats
+    }
     return w
 
   def get_filestats(self):
     '''Returns dict with information about the file that is being recorded for this workstation'''
     filestats = None
-    fullname = os.path.join(self.savedir,self.vid_basename)
+    fullname = self.vid_current
+    # print(f'get_filestats -- fullname {fullname}')
     if os.path.exists(fullname):
         filestats = {
           'basename': self.vid_basename,
@@ -79,67 +105,116 @@ class DeviceRecorder():
           'time': -1,
           'size': os.path.getsize(fullname),
         }
+    # print(f'get_filestats -- filestats {filestats}')
     return filestats
 
   def start_recording(self, duration=None, monitor=False):
 
     if (self.started):
-      return False
+        return False
 
     self.started = True
     self.duration = duration
 
-    logger.info(f"Thread {self.id} : START recording.")
+    logger.info(f"Workstation {self.id} : START recording.")
 
     self.record_video()
-    
-    # self.video_file_monitor = FileMonitor(filepath=f'{self.savedir}/ws{self.id}.mp4',hz=1.0,logger=logging.info)
-    # if monitor and DeviceRecorder.video_file_monitor:
-    #   if not DeviceRecorder.video_file_monitor.running:
-    #     DeviceRecorder.video_file_monitor.start()
 
-    # if self.id == 1:
-    #   self.audio_thread = threading.Thread(target=self.record_audio)
-    #   self.audio_thread.start()
-    
     return True
 
   def stop_recording(self):
 
-    logger.info(f"Thread {self.id} : STOP recording.")
-    # self.quick_info()
-    self.kill_video_subprocess()
-    # self.quick_info()
-    self.kill_audio_subprocess()
-    # self.kill_video_process() # this multiprocessing.Process spawned the vlc subprocess
-    self.started = False
+      logger.info(f"Workstation {self.id} : STOP recording.")
+      # self.quick_info()
+      self.kill_video_subprocess()
+      # self.quick_info()
+      self.kill_audio_subprocess()
+      # self.kill_video_process() # this multiprocessing.Process spawned the vlc subprocess
+      self.started = False
+      self.trying = False
+      if self.chunk_thread:
+          self.chunk_thread.cancel()
+
+  def check_drive_capacity(self):
+      '''Allows a device to figure out which drive to store it's current vid file'''
+      if not DeviceRecorder.device_picking_best_drive:
+          DeviceRecorder.device_picking_best_drive = True
+
+          drive_stats = DriveManager.get_video_storage_stats(DeviceRecorder.best_drive)
+          for dstat in drive_stats:
+              if dstat['drive'] == DeviceRecorder.best_drive and dstat['actual_pct_used_warning'] == True:
+                  best_drive, max_session_id = DriveManager.pick_best_drive(DeviceRecorder.best_drive,n_workstations=5) # TODO remove hardcoding
+                  if best_drive != DeviceRecorder.best_drive:
+                        logger.debug("=============================================================================================")
+                        logger.debug(f'             CHANGE OF DRIVE FROM {DeviceRecorder.best_drive} to {best_drive}')
+                        logger.debug("=============================================================================================")
+                        DeviceRecorder.best_drive = best_drive
+
+          DeviceRecorder.device_picking_best_drive = False
+      else:
+          logger.debug(f"Workstation {self.id} : {threading.current_thread().name} : WAITING FOR BEST DRIVE TO BE PICKED")
+          while DeviceRecorder.device_picking_best_drive:
+              pass
+          logger.debug(f"Workstation {self.id} : {threading.current_thread().name} : BEST DRIVE HAS BEEN PICKED {DeviceRecorder.best_drive}")
+          
+  def stop_chunking(self):
+      logger.debug("=============================================================================================")
+      logger.debug(f"STOP CHUNKING : Workstation {self.id} : {threading.current_thread().name} ")
+      
+      self.kill_video_subprocess()
+
+      # Start the next chunk process
+      logger.debug(f'STOP CHUNKING : DeviceRecorder.best_drive: {DeviceRecorder.best_drive}')
+      logger.debug(f'STOP CHUNKING : DeviceRecorder.device_picking_best_drive: {DeviceRecorder.device_picking_best_drive}')
+      logger.debug(f'STOP CHUNKING : self.session_dir_basename: {self.session_dir_basename}')
+      logger.debug(f'STOP CHUNKING : self.session_dir_fullpath: {self.session_dir_fullpath}')
+
+      self.check_drive_capacity()
+
+      # Create path to session dir on the drive where we are storing the next chunk
+      self.session_dir_fullpath = os.path.join(DeviceRecorder.best_drive,self.session_dir_basename)
+      if not os.path.isdir(self.session_dir_fullpath):
+            os.mkdir(self.session_dir_fullpath)
+      
+      # Create name of next file chunk
+      self.chunk_id += 1
+      self.vid_basename = f"{self.ws_id}_{self.chunk_id:04}_0.mp4"
+      self.vid_current = os.path.join(self.session_dir_fullpath,self.vid_basename)
+      logger.debug(f'self.vid_current: {self.vid_current}')
+
+      # Start the next chunk!!!!!
+      self.record_video()
 
   def record_audio(self):
     vlcapp = '/usr/bin/cvlc'
     sdpFile = f'{self.sdp_dir}/ws{1}_audio.sdp'
     print('record_audio: ' + sdpFile)
-    self.audio_subprocess = subprocess.Popen([vlcapp, '--verbose="1"', sdpFile, f'--sout=file/ogg:{self.savedir}/ws{self.id}.ogg'])
+    self.audio_subprocess = subprocess.Popen([vlcapp, '--verbose="1"', sdpFile, f'--sout=file/ogg:{self.session_dir_fullpath}/{self.ws_id}.ogg'])
 
   def record_video(self):
     ''' Creates vlc subprocess to record the video using parsed sdp file
     '''
     vlcapp = '/usr/bin/cvlc'
-    sdpFile = f'{self.sdp_dir}/ws{self.id}_parsed.sdp'
-    output_file_param = f'--sout=file/ts:{self.savedir}/ws{self.id}.mp4'
+    sdpFile = self.sdp_video
+    video_file_path = self.vid_current
+    video_file_param = f'--sout=file/ts:{video_file_path}'
     logger.debug('record_video --> ' + sdpFile)
 
     # Start the vlc application passing the sdpFile it needs to read the stream correctly
-    cmd = f'{vlcapp} --verbose="1" {sdpFile} {output_file_param}'
+    cmd = f'{vlcapp} --verbose="2" {sdpFile} {video_file_param}'
 
     if self.video_subprocess:
       logger.debug(f'pid: {self.video_subprocess.pid} -- Before')
 
-    self.video_subprocess = subprocess.Popen([vlcapp,'--verbose="2"', sdpFile, f'--sout=file/ts:{self.savedir}/ws{self.id}.mp4'])
+    self.video_subprocess = subprocess.Popen(cmd.split())
 
     if self.video_subprocess:
       logger.debug(f'pid: {self.video_subprocess.pid} -- After')
 
+    self.trying = True
+    self.stop_chunk_at_time = -1 # reset, this will be set once the filesize is verified > 0 in handle_file_check
     self.kill_sent = False
+    self.kill_count = 0
 
   def quick_info(self):
     info = f'Device: {self.id} -- pid: {self.video_subprocess.pid} -- ' + \
@@ -164,67 +239,90 @@ class DeviceRecorder():
       self.audio_subprocess = None
 
   def handle_file_check(self,stats):
-      ''' Handle file stats returned by DirMonitor at regular intervals
+      ''' Handle file stats returned by VidDirMonitor at regular intervals
       '''
+      # logger.debug('-----------------------------------------------------------------------------------------------')
+      # logger.debug(f'DeviceRecorder::handle_file_check -- {threading.current_thread().name} -- called from dir_monitor_update_callback')
       self.filestats = stats
+      wsid     = stats['wsid']
+      basename = stats['basename']
       fullname = stats['fullname']
-      basename = os.path.basename(fullname)
-      t = stats['time']
+      tmonitor = stats['time']
       filesize = stats['size']
+      if self.chunk_duration_min > 0: # yes we are chunking
+          filesize = stats['chapter_size']
+      
+      # Look at stats debugging only
       output = ""
       if not os.path.exists(fullname):
-          output += f"T: {t:.03} -- File: {basename} -- doesn't exist\n"
+          output += f"T: {tmonitor:.2f} -- File: {basename} -- doesn't exist\n"
       else:
-          output += f"T: {t:.03} -- File: {basename} -- sz: {stats['size']} -- restart_time: {t % self.restart_interval}"
-      print(output)
+          output += f"T: {tmonitor:.2f} -- Next chunk T: {self.stop_chunk_at_time} -- File: {basename} -- sz: {filesize} -- restart_time: {tmonitor % self.restart_interval} -- trying: {self.trying} -- {threading.current_thread().name}"
+      logger.debug(output)
 
-      self.restart_needed = (filesize == 0 and (t % self.restart_interval) == 0)
+      # Determine if a restart of vlc process is needed
+      if self.trying:
 
-      if self.restart_needed:
-          if not self.kill_sent:
-            self.kill_video_subprocess()
+          if filesize > 0 and not self.kill_sent:
+              self.trying = False # Yay!
+              # if chunking start the chunk timer
+              if self.chunk_duration_min > 0:
+                    self.stop_chunk_at_time = tmonitor + self.chunk_duration_min*60
+                  # self.chunk_thread = threading.Timer(interval=self.chunk_duration_min*60, function=self.stop_chunking)
+                  # self.chunk_thread.daemon = True
+                  # self.chunk_thread.start()
 
-      if self.kill_sent:
-          if self.video_subprocess.poll() is None: # make sure process has finished terminiating before recreating
-              logger.debug(f"Waiting for vlc process {self.video_subprocess.pid} to terminate...")
-          else:
-              logger.debug("Restarting vlc process ...")
-              self.record_video() # start the vlc process up again
+          self.restart_needed = (filesize == 0 and (tmonitor % self.restart_interval) == 0)
+
+          if self.restart_needed and not self.kill_sent:
+              self.kill_video_subprocess()
+
+          if self.kill_sent:
+              if self.video_subprocess.poll() is None: # make sure process has finished terminiating before recreating
+                  logger.debug(f"Waiting for vlc process {self.video_subprocess.pid} to terminate...")
+              else:
+                  logger.debug("Restarting vlc process ...")
+                  self.record_video() # start the vlc process up again
+
+      # Determine if we need to stop this chunk and move on to the next chunk
+      if self.stop_chunk_at_time > 0 and tmonitor >= self.stop_chunk_at_time:
+          self.stop_chunking()
 
 
-  def get_sdp_file(self,workstation_num, workstation_ip):
+  def get_sdp_file(self,ws_id, workstation_ip):
     ''' GET the sdp file from the RNA device '''
 
     # GET the sdp file from the RNA device. r.content will contain the payload
-    print(workstation_ip)
+    logger.debug(f'workstation_ip: {workstation_ip}')
     uri = f'https://{workstation_ip}/dapi/media_v1/resources/encoder0/session/?command=get';
-    print(uri)
+    logger.debug(f'uri: {uri}')
     r = requests.get(uri,auth=HTTPBasicAuth('admin','ineevoro'),verify=False,timeout=1)
-    print(f'r.status_code: {r.status_code}')
+    logger.debug(f'r.status_code: {r.status_code}')
 
     if (r.status_code == 200):
 
         # Save out sdp file to text
-        original_sdp_filename = f'ws{workstation_num}.sdp'
-        p = f'{self.sdp_dir}/{original_sdp_filename}' # p = f'prac/{file_name}'
-        print(f'saving sdp file to {p}')
-        open(p,'wb').write(r.content) # save it out as text .sdp file
+        original_sdp_filename = f'{ws_id}.sdp'
+        original_sdp_fullpath = f'{self.sdp_dir}/{original_sdp_filename}' # p = f'prac/{file_name}'
+        logger.debug(f'saving sdp file to {original_sdp_fullpath}')
+        with open(original_sdp_fullpath,'wb') as writer: # save it out as text .sdp file
+            writer.write(r.content)
 
-        # Read in sdp file and strip all extraneous data and save back out as *_parsed.sdp
-        parsed_sdp_filename = f'ws{workstation_num}_parsed.sdp'
-        path_to_file = f'{self.sdp_dir}/{parsed_sdp_filename}'
-        text = self.parse_sdp_file(sdpfile=p,screen='screen0')
-        with open(path_to_file,'w') as writer:
+        # Read in sdp file and strip all extraneous data and save back out as *_video.sdp
+        parsed_sdp_filename = f'{ws_id}_video.sdp'
+        parsed_sdp_fullpath_video = f'{self.sdp_dir}/{parsed_sdp_filename}'
+        text = self.parse_sdp_file(sdpfile=original_sdp_fullpath,screen='screen0')
+        with open(parsed_sdp_fullpath_video,'w') as writer:
             writer.write(text)
 
         # Parse sdp for audio stream information. Save out as *_audio.sdp
-        audio_sdp_filename = f'ws{workstation_num}_audio.sdp'
-        path_to_file = f'{self.sdp_dir}/{audio_sdp_filename}'
-        text = self.parse_sdp_file_audio(sdpfile=p)
-        with open(path_to_file,'w') as writer:
+        audio_sdp_filename = f'{ws_id}_audio.sdp'
+        parsed_sdp_fullpath_audio = f'{self.sdp_dir}/{audio_sdp_filename}'
+        text = self.parse_sdp_file_audio(sdpfile=original_sdp_fullpath)
+        with open(parsed_sdp_fullpath_audio,'w') as writer:
             writer.write(text)
 
-    return r.status_code == 200, path_to_file
+    return r.status_code == 200, original_sdp_fullpath, parsed_sdp_fullpath_video, parsed_sdp_fullpath_audio
 
 
   def parse_sdp_file_audio(self,sdpfile=""):
@@ -308,23 +406,18 @@ class DeviceRecorder():
     finalSDP = finalSDP.rstrip()
 
     return finalSDP
-  
-  # def start_vid_monitor(self):
-  #   self.vlc_inspect_timer = threading.Timer(1.0, self.show_vlc_data)
-  #           self.vlc_inspect_timer.start()
 
   def download_sdp(self):
-    success, sdp_path = self.get_sdp_file(self.workstation_num,self.ip)
+    success, orig_sdp, vid_sdp, aud_sdp = self.get_sdp_file(self.ws_id,self.ip)
     self.sdp_downloaded = success
-    return success
-    # num_rna = 5
-    # octet = 70 + (self.workstation_num) + int((self.workstation_num-1) / num_rna)
-    # workstation_ip = f'192.168.5.{octet}'
-    # if self.workstation_num <= num_rna:
-    #   success, sdp_path = self.get_sdp_file(self.workstation_num,workstation_ip)
-    #   self.sdp_downloaded = success
-    # else:
-    #   self.sdp_downloaded = True
+    if success:
+        logger.info('download_sdp successful')
+        logger.info(f'orig_sdp: {orig_sdp}')
+        logger.info(f'vid_sdp: {vid_sdp}')
+        logger.info(f'aud_sdp: {aud_sdp}')
+    else:
+        logger.info('download sdp unsuccessful')
+    return success, orig_sdp, vid_sdp, aud_sdp
 
   def __str__(self):
     s = self.__dict__["name"] + ": "

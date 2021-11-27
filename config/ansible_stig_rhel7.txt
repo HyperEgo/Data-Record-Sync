@@ -1,0 +1,11 @@
+﻿# Install NM build, RHEL 7 OS
+1. Install NM Autobuild 4.6.1 media, follow install prompts:
+  a. MEI number = none (press <enter> or let timeout expire)
+  b. Role Type = “NM Black <router>”
+
+# Run Ansible play, STIG RHEL 7 env post Nessus, SCAP scans
+1. Run Ansible play locally:
+  ansible-playbook /etc/ansible/roles/stigs/stigs.yml
+
+# Output ~> failed (red) = none | skipped (yellow) = ~200+ | ok (green) = ~1000?+
+# Logs ~> /var/log/ansible.log

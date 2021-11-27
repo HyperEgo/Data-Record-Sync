@@ -1,5 +1,3 @@
-# Source for DCP project
-
 Close child windows should close parent
 Relative address for starting application - should be able to start the application from anywhere
 > child window needs to be direct descendant of parent (e.g. not File > Exit option)
@@ -16,4 +14,3 @@ Better error reporting!
 ~~
 
 Parent windows 'Exit" kills child but not reverse
-

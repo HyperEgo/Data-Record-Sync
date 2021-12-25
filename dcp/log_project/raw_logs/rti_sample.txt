@@ -1,0 +1,4 @@
+Table Name: Circle$RecordAll$domain0, Topic Name: Circle
+Timestamp,color,x,y,shapesize,fillKind,angle
+Tue May 03 04:30:38 1900,YELLOW,68,153,30,0,0.0000000000
+Tue May 03 04:30:45 1900,YELLOW,80,175,60,1,50.0000000000

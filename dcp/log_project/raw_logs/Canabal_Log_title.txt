@@ -1,0 +1,8 @@
+3 May 1900 04:30:05 yeet Urgent yeet This is new text
+3 May 1900 04:30:15 yeet Warning yeet SOMETHING DIFFERENT
+3 May 1900 04:30:25 yeet Error yeet Some more new text
+3 May 1900 04:30:35 yeet Urgent yeet SOME MORE WORDS
+3 May 1900 04:30:45 yeet Lowest yeet These are words. I'm putting lots of words in this log. These are newer words.
+3 May 1900 04:30:50 yeet Middle yeet Hello. Canabal was here. I am typing words into a log. These are more now.
+3 May 1900 04:30:55 yeet Tall yeet dsjfasjdfhakdjflaskdfjsdfakl
+3 May 1900 04:31:20 yeet Lowest yeet One two three four five six

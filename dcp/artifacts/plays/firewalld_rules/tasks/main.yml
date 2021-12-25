@@ -1,0 +1,29 @@
+---
+# tasks file for firewalld_rules
+
+- name:  Install firewalld package
+  yum:
+    name: firewalld
+    state: latest
+
+- name: Turn on Firewalld
+  systemd:
+    name: firewalld
+    state: started
+    enabled: yes
+
+- name:  Add IPV4 and IPV6 Firewall Rules
+  firewalld:
+    rich_rule: "{{ item }}"
+    permanent: yes
+    state: enabled
+  loop:
+    - rule family="ipv4" source address="0.0.0.0/0" accept
+    - rule family="ipv6" source address="0:0:0:0::0/0" accept
+  register: fw_updated
+
+- name: Reload Firewalld
+  systemd:
+    name: firewalld
+    state: reloaded
+  when: fw_updated.changed

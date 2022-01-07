@@ -4,11 +4,6 @@
 
 ARTS='/data_local/dcp/artifacts'
 
-# upgrade pip3, install wheels
-cd $ARTS/archives/wheels
-pip3 install pip-21.1.2-py3-none-any.whl 
-pip3 install --no-index --find-links * 
-
 # install rpms
 find $ARTS/archives/rpms -iname "*.rpm" -exec cp -ar '{}' /data_local/repo/IBCS-other/. \;
 cd /data_local/repo/IBCS-other/
@@ -19,9 +14,14 @@ yum makecache
 yum install -y * --nogpgcheck
 sed -i 's/enabled = 1/enabled = 0/' /etc/yum.repos.d/IBCS-other.repo
 
+# upgrade pip3, install wheels
+cd $ARTS/archives/wheels
+pip3 install pip-21.1.2-py3-none-any.whl 
+pip3 install --no-index --find-links * 
+
 # install python pip archives
 cd $ARTS/archives/piparch
 pip3 install *
 
 # OSM firewall config
-/usr/bin/ansible-playbook $ARTS/plays/firewall.yml -K
+sudo /usr/bin/ansible-playbook $ARTS/plays/firewall.yml

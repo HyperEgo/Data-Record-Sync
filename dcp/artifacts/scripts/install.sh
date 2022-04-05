@@ -3,16 +3,18 @@
 # DCP artifact installs
 
 ARTS='/data_local/dcp/artifacts'
+REPO='/data_local/dcprepo'
 
 # install rpms
-find $ARTS/archives/rpms -iname "*.rpm" -exec cp -ar '{}' /data_local/repo/IBCS-other/. \;
-cd /data_local/repo/IBCS-other/
-sed -i 's/enabled = 0/enabled = 1/' /etc/yum.repos.d/IBCS-other.repo
+mkdir -p $REPO
+find $ARTS/archives/rpms -iname "*.rpm" -exec cp -ar '{}' $REPO/. \;
+cd $REPO/
+#sed -i 's/enabled = 0/enabled = 1/' /etc/yum.repos.d/IBCS-other.repo
 createrepo .
 yum clean all
 yum makecache
 yum install -y * --nogpgcheck
-sed -i 's/enabled = 1/enabled = 0/' /etc/yum.repos.d/IBCS-other.repo
+#sed -i 's/enabled = 1/enabled = 0/' /etc/yum.repos.d/IBCS-other.repo
 
 # upgrade pip3, install wheels
 cd $ARTS/archives/wheels

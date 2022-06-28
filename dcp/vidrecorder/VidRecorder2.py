@@ -14,6 +14,7 @@ from DriveManager import DriveManager
 from utils.dirmonitor import DirMonitor
 import utils.vidlogging as vidlogging
 from utils import utils
+from utils import fileutils
 
 logger = vidlogging.get_logger(__name__,filename=g.paths['logfile'])
 
@@ -138,8 +139,9 @@ class VidRecorder2():
       # Create the sdp directory inside of the current sessionDirectory.
       # All of the sdp files for this session will be stored here.
       session_sdp_dir = os.path.join(self.sessionDirectory,'sdp')
-      if not os.path.isdir(session_sdp_dir):
-          os.mkdir(session_sdp_dir)
+      fileutils.dcp_mkdir(session_sdp_dir,g.log['group'],g.log['permissions'])
+    #   if not os.path.isdir(session_sdp_dir):
+    #       os.mkdir(session_sdp_dir)
 
       n = len(self.wslist) # number of selected workstations
       sdp_download_failed = [False for i in range(n)]
@@ -177,7 +179,7 @@ class VidRecorder2():
           'type': 'SDP Download Status',
           'workstation_info': workstation_info,
       })
-      
+
       # Dump devices for debugging purposes
       print('------------------------')
       for d in self.device_list:
@@ -304,7 +306,8 @@ class VidRecorder2():
         
         timestamp = f'{datetime.date.today().strftime("%Y-%b-%d")}_{time.strftime("%Hh%Mm%Ss", time.localtime())}'
         session_dir_fullpath = f'{best_drive}/{(max_session_id+1):02}_{timestamp}'
-        os.mkdir(session_dir_fullpath)
+        fileutils.dcp_mkdir(session_dir_fullpath,g.log['group'],g.log['permissions'])
+        # os.mkdir(session_dir_fullpath)
         for w in workstations:
             if (use_dev_dir):
                 w['dir'] = session_dir_fullpath
@@ -312,7 +315,8 @@ class VidRecorder2():
                 wid = f'{workstations.index(w) + 1:02}'
                 w['dir'] = f'{session_dir_fullpath}/WS{wid}'
             if not os.path.isdir(w['dir']):
-                os.mkdir(w['dir'])
+                fileutils.dcp_mkdir(w['dir'],g.log['group'],g.log['permissions'])
+                # os.mkdir(w['dir'])
 
         return (workstations,best_drive,session_dir_fullpath)
     

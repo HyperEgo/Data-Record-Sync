@@ -1,6 +1,7 @@
 #!/bin/bash
 
 # re-mount data drives
+
 MNT1='/data_local/dcp/data/dd1'
 MNT2='/data_local/dcp/data/dd2'
 DEV1='/dev/sdb'

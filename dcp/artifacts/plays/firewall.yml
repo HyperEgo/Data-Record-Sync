@@ -1,7 +1,7 @@
 ---
 - name: "Firewalld Rules"
   hosts: localhost
-  #become: yes
+  become: yes
   roles:
     - role: firewalld_rules
 ...

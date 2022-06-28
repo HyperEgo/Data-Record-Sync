@@ -15,7 +15,7 @@ mkfs.ext4 -F $DEV1 $DEV2
 
 # backup /etc/fstab, do not overwrite if exists
 if [ ! -f /etc/fstab.bak ]; then
-        cp -ar /etc/fstab /etc/fstab.bak
+	cp -ar /etc/fstab /etc/fstab.bak
 fi
 
 # label data drives, append to /etc/fstab, mount

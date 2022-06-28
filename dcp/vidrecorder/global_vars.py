@@ -3,6 +3,7 @@ import os
 import configparser
 from utils.utils import str2bool
 from utils.utils import convert_config_val
+from utils import fileutils
 
 class Globals:
     def __init__(self):
@@ -23,6 +24,7 @@ class Globals:
         self.storage = {
             'reserve' : []
         }
+        self.log = {}
 
     def __repr__(self):
         return self.__str__()
@@ -59,13 +61,18 @@ g.paths['hdd'] = [
     g.config.get('dcp_config','disk_B_Location'),
 ]
 
+# 0.1.6 addition: adding some global log vars
+g.log['dir'] = g.paths['rtlogs']
+g.log['group'] = "ibcs"
+g.log['permissions'] = 0o777
+g.log['logfile'] = g.paths['logfile']
+g.log['errfile'] = g.paths['errfile']
+
 # Verify dirs -- create them if they don't exist
-if not os.path.exists(g.paths['rt']):
-    os.mkdir(g.paths['rt'])
-if not os.path.exists(g.paths['sdpdir']):
-    os.mkdir(g.paths['sdpdir'])
-if not os.path.exists(g.paths['rtlogs']):
-    os.mkdir(g.paths['rtlogs'])
+fileutils.dcp_mkdir(g.paths['rt'],g.log['group'],g.log['permissions'])
+fileutils.dcp_mkdir(g.paths['sdpdir'],g.log['group'],g.log['permissions'])
+fileutils.dcp_mkdir(g.paths['rtlogs'],g.log['group'],g.log['permissions'])
+
 
 # Load and verify advanced settings
 g.advanced['ping_rna_onlaunch'] = str2bool(g.config.get('advanced_settings','ping_rna_onlaunch'))

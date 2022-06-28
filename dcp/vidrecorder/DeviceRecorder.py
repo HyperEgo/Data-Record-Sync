@@ -16,6 +16,7 @@ from utils.dirmonitor import DirMonitor
 from global_vars import g
 import utils.vidlogging as vidlogging
 from DriveManager import DriveManager
+from utils import fileutils
 
 # format = "%(asctime)s: %(message)s"
 # logging.basicConfig(format=format, level=logging.INFO,
@@ -156,11 +157,11 @@ class DeviceRecorder():
           while DeviceRecorder.device_picking_best_drive:
               pass
           logger.debug(f"Workstation {self.id} : {threading.current_thread().name} : BEST DRIVE HAS BEEN PICKED {DeviceRecorder.best_drive}")
-          
+
   def stop_chunking(self):
       logger.debug("=============================================================================================")
       logger.debug(f"STOP CHUNKING : Workstation {self.id} : {threading.current_thread().name} ")
-      
+
       self.kill_video_subprocess()
 
       # Start the next chunk process
@@ -174,8 +175,9 @@ class DeviceRecorder():
       # Create path to session dir on the drive where we are storing the next chunk
       self.session_dir_fullpath = os.path.join(DeviceRecorder.best_drive,self.session_dir_basename)
       if not os.path.isdir(self.session_dir_fullpath):
-            os.mkdir(self.session_dir_fullpath)
-      
+            fileutils.dcp_mkdir(self.session_dir_fullpath,g.log['group'],g.log['permissions'])
+            # os.mkdir(self.session_dir_fullpath)
+
       # Create name of next file chunk
       self.chunk_id += 1
       self.vid_basename = f"{self.ws_id}_{self.chunk_id:04}_0.mp4"
@@ -216,6 +218,7 @@ class DeviceRecorder():
     self.kill_sent = False
     self.kill_count = 0
 
+
   def quick_info(self):
     info = f'Device: {self.id} -- pid: {self.video_subprocess.pid} -- ' + \
            f'kill_count: {self.kill_count} -- file: {self.vid_basename} -- '
@@ -230,8 +233,10 @@ class DeviceRecorder():
       self.kill_sent = True
       self.kill_count += 1
       # self.video_subprocess = None
-      # logging.info('After terminating subprocess')
-       
+      logger.debug(('After terminating subprocess'))
+      logger.debug(f"Attempting to change the permissions on the video file: {self.vid_current}")
+      fileutils.dcp_tryto_set_credentials(self.vid_current,g.log['group'],g.log['permissions'])
+
   def kill_audio_subprocess(self):
     if self.audio_subprocess:
       logger.info('Terminating audio_subprocess')
@@ -301,12 +306,16 @@ class DeviceRecorder():
 
     if (r.status_code == 200):
 
+        group = g.log['group']
+        permissions = g.log['permissions']
+
         # Save out sdp file to text
         original_sdp_filename = f'{ws_id}.sdp'
         original_sdp_fullpath = f'{self.sdp_dir}/{original_sdp_filename}' # p = f'prac/{file_name}'
         logger.debug(f'saving sdp file to {original_sdp_fullpath}')
         with open(original_sdp_fullpath,'wb') as writer: # save it out as text .sdp file
             writer.write(r.content)
+        fileutils.dcp_tryto_set_credentials(original_sdp_fullpath,group,permissions)
 
         # Read in sdp file and strip all extraneous data and save back out as *_video.sdp
         parsed_sdp_filename = f'{ws_id}_video.sdp'
@@ -314,6 +323,7 @@ class DeviceRecorder():
         text = self.parse_sdp_file(sdpfile=original_sdp_fullpath,screen='screen0')
         with open(parsed_sdp_fullpath_video,'w') as writer:
             writer.write(text)
+        fileutils.dcp_tryto_set_credentials(parsed_sdp_fullpath_video,group,permissions)
 
         # Parse sdp for audio stream information. Save out as *_audio.sdp
         audio_sdp_filename = f'{ws_id}_audio.sdp'
@@ -321,6 +331,7 @@ class DeviceRecorder():
         text = self.parse_sdp_file_audio(sdpfile=original_sdp_fullpath)
         with open(parsed_sdp_fullpath_audio,'w') as writer:
             writer.write(text)
+        fileutils.dcp_tryto_set_credentials(parsed_sdp_fullpath_audio,group,permissions)
 
     return r.status_code == 200, original_sdp_fullpath, parsed_sdp_fullpath_video, parsed_sdp_fullpath_audio
 

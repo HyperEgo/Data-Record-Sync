@@ -3,8 +3,8 @@
 # setup and install for DCP media deploy
 
 # constants
-OWNER=eacct
-PERMS=775
+OWNER=$USER
+PERMS=777
 GRP=ibcs
 SCRIPTS='/data_local/dcp/artifacts/scripts'
 APPHOME="/data_local"

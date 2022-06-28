@@ -1,5 +1,5 @@
 [version_info]
-versionNumber = 0.1.5
+versionNumber = 0.1.6
 
 [dcp_config]
 disk_A_Location = /data_local/dcp/data/dd1
@@ -20,7 +20,7 @@ WS11 = shelter 1 IP
 WS12 = shelter 2 IP
 
 [advanced_settings]
-ping_rna_onlaunch = False
+ping_rna_onlaunch = True
 ping_rna_onlaunch_count = 2
 ping_rna_timeout_sec = 1
 restart_interval = 5

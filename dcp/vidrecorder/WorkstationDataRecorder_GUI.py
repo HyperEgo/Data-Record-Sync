@@ -45,6 +45,11 @@ class WorkstationDataRecorder_GUI:
 
         self.playWin_toplevel = None
         self.instructionWindow = None
+
+        # Fonts
+        self.labelFont = tkFont.Font(family='Verdana',size=-14)
+        self.headerFont = tkFont.Font(family='Verdana',size=-32)
+
         # timestamps for generating test logs
         self.begin = None
         self.end = None
@@ -139,7 +144,7 @@ class WorkstationDataRecorder_GUI:
             lbl["justify"] = "center"
             lbl["fg"] = "light gray"
             lbl["background"] = "#383838"
-            lbl["font"] = tkFont.Font(family='Verdana',size=10)
+            lbl["font"] = self.labelFont
             lbl.place(x=xPos,y=yPos)#,width=70,height=30)
             yPos += 35
 
@@ -663,7 +668,7 @@ class WorkstationDataRecorder_GUI:
         self.chk_WS9=tk.Checkbutton(self.root)
         self.chk_WS9.place(x=425,y=605,width=70,height=30)
         self.img_WS9 = Label(self.root,image=self.img_dark,borderwidth=0)
-        self.img_WS9.place(x=500,y=615)
+        self.img_WS9.place(x=500,y=610)
         self.img_WS9_ttp = tooltip.CreateToolTip(self.img_WS9, '')
 
         self.label_source10=tk.Label(self.root)
@@ -718,8 +723,7 @@ class WorkstationDataRecorder_GUI:
         self.label_SwTitle=tk.Label(self.root)
         self.label_SwTitle["anchor"] = "center"
         self.label_SwTitle["bg"] = "#383838"
-        ft = tkFont.Font(family='Verdana',size=24)
-        self.label_SwTitle["font"] = ft
+        self.label_SwTitle["font"] = self.headerFont
         self.label_SwTitle["fg"] = "#79a878"
         self.label_SwTitle["justify"] = "center"
         self.label_SwTitle["text"] = "WORKSTATION DATA RECORDER"
@@ -731,6 +735,7 @@ class WorkstationDataRecorder_GUI:
         self.statusFrame.place(x=505,y=120,height=200,width=380)
         self.label_stats = tk.Label(self.statusFrame)
         self.label_stats["background"] = "dark gray"
+        self.label_stats["font"] = self.labelFont
         self.label_stats.place(x=143,y=5)
         self.label_stats["text"]= "DCP STATUS"
         self.label_stats["justify"]= "center"
@@ -742,20 +747,24 @@ class WorkstationDataRecorder_GUI:
         self.label_HDD_Message_A = tk.Label(self.statusFrame)
         self.label_HDD_Message_A["background"] = "dark gray"
         self.label_HDD_Message_A.place(x=35,y=85)
+        self.label_HDD_Message_A["font"] = self.labelFont
         self.label_HDD_Message_A["fg"] = "dark red"
         self.label_HDD_Message_Overwrite_A = tk.Label(self.statusFrame)
         self.label_HDD_Message_Overwrite_A["background"] = "dark gray"
         self.label_HDD_Message_Overwrite_A.place(x=195,y=85)
+        self.label_HDD_Message_Overwrite_A["font"] = self.labelFont
         self.label_HDD_Message_Overwrite_A["fg"] = "dark red"
 
 
         self.label_HDD_Message_B = tk.Label(self.statusFrame)
         self.label_HDD_Message_B["background"] = "dark gray"
         self.label_HDD_Message_B.place(x=35,y=170)
+        self.label_HDD_Message_B["font"] = self.labelFont
         self.label_HDD_Message_B["fg"] = "dark red"
         self.label_HDD_Message_Overwrite_B = tk.Label(self.statusFrame)
         self.label_HDD_Message_Overwrite_B["background"] = "dark gray"
         self.label_HDD_Message_Overwrite_B.place(x=195,y=170)
+        self.label_HDD_Message_Overwrite_B["font"] = self.labelFont
         self.label_HDD_Message_Overwrite_B["fg"] = "dark red"
 
         #TODO: This can be added to the drive status message while recording over a full disk.
@@ -765,17 +774,20 @@ class WorkstationDataRecorder_GUI:
         self.label_HDD_Status = tk.Label(self.statusFrame)
         self.label_HDD_Status["background"] = "dark gray"
         self.label_HDD_Status.place(x=35,y=35)
+        self.label_HDD_Status["font"] = self.labelFont
         self.label_HDD_Status["fg"] = "black"
         self.label_HDD_Status["text"]= f"Disk A - Total Capacity: "
 
 
         self.label_Percent_Status_A = tk.Label(self.statusFrame)
         self.label_Percent_Status_A["background"] = "dark gray"
+        self.label_Percent_Status_A["font"] = self.labelFont
         self.label_Percent_Status_A["fg"] = "black"
         self.label_Percent_Status_A.place(x=35,y=60)
 
         self.label_HDD_Space = tk.Label(self.statusFrame)
         self.label_HDD_Space["background"] = "dark gray"
+        self.label_HDD_Space["font"] = self.labelFont
         self.label_HDD_Space["fg"] = "black"
         self.label_HDD_Space.place(x=205,y=35)
         self.Active_Image = Label(self.statusFrame,image=self.img_green,borderwidth=0) #TODO: Adjust image to remove background.
@@ -785,21 +797,25 @@ class WorkstationDataRecorder_GUI:
         self.label_Active_HDD = tk.Label(self.statusFrame)
         self.label_Active_HDD["text"] = "(Active)"
         self.label_Active_HDD["background"] = "dark gray"
+        self.label_Active_HDD["font"] = self.labelFont
         self.label_Active_HDD["fg"] = "dark green"
 
         self.label_HDD_Status_2 = tk.Label(self.statusFrame)
         self.label_HDD_Status_2["background"] = "dark gray"
         self.label_HDD_Status_2.place(x=35,y=120)
+        self.label_HDD_Status_2["font"] = self.labelFont
         self.label_HDD_Status_2["fg"] = "black"
 
         self.label_Percent_Status_B = tk.Label(self.statusFrame)
         self.label_Percent_Status_B["background"] = "dark gray"
+        self.label_Percent_Status_B["font"] = self.labelFont
         self.label_Percent_Status_B["fg"] = "black"
         self.label_Percent_Status_B.place(x=35,y=145)
 
         self.label_HDD_Status_2["text"]= f"Disk B - Total Capacity: "
         self.label_HDD_Space_2 = tk.Label(self.statusFrame)
         self.label_HDD_Space_2["background"] = "dark gray"
+        self.label_HDD_Space_2["font"] = self.labelFont
         self.label_HDD_Space_2["fg"] = "black"
         self.label_HDD_Space_2.place(x=205,y=120)
 
@@ -857,8 +873,7 @@ class WorkstationDataRecorder_GUI:
         self.label_SaveDest["activebackground"] = "#383838"
         self.label_SaveDest["anchor"] = "w"
         self.label_SaveDest["bg"] = "#383838"
-        ft = tkFont.Font(family='Verdana',size=10)
-        self.label_SaveDest["font"] = ft
+        self.label_SaveDest["font"] = self.labelFont
         self.label_SaveDest["fg"] = "light gray"
         self.label_SaveDest["justify"] = "center"
         self.label_SaveDest["text"] = "Save Directory: "
@@ -866,8 +881,7 @@ class WorkstationDataRecorder_GUI:
 
         self.entry_SaveDir=tk.Entry(self.root)
         self.entry_SaveDir["borderwidth"] = "1px"
-        ft = tkFont.Font(family='Verdana',size=10)
-        self.entry_SaveDir["font"] = ft
+        self.entry_SaveDir["font"] = self.labelFont
         self.entry_SaveDir["fg"] = "#333333"
         self.entry_SaveDir["justify"] = "center"
         self.entry_SaveDir["text"] = ""
@@ -886,8 +900,7 @@ class WorkstationDataRecorder_GUI:
         #Record Button
         self.button_Record=tk.Button(self.root)
         self.button_Record["bg"] = "#efefef"
-        ft = tkFont.Font(family='Verdana',size=10)
-        self.button_Record["font"] = ft
+        self.button_Record["font"] = self.labelFont
         self.button_Record["fg"] = "#000000"
         self.button_Record["justify"] = "center"
         self.button_Record["text"] = "Record"
@@ -897,8 +910,7 @@ class WorkstationDataRecorder_GUI:
         #All checkbox
         self.bool_checkedAllWorkstations = BooleanVar() #TODO: Obsolete. All available/connected WS's will record.
         self.WS_All=tk.Checkbutton(self.root)
-        ft = tkFont.Font(family='Verdana',size=10)
-        self.WS_All["font"] = ft
+        self.WS_All["font"] = self.labelFont
         self.WS_All["fg"] = "light gray"
         self.WS_All["background"] = "#383838"
         self.WS_All["justify"] = "center"
@@ -911,8 +923,7 @@ class WorkstationDataRecorder_GUI:
 
         #Duration
         self.chk_Duration = tk.Checkbutton() #TODO: Obsolete.
-        ft = tkFont.Font(family='Verdana',size=10)
-        self.chk_Duration["font"] = ft
+        self.chk_Duration["font"] = self.labelFont
         self.chk_Duration["justify"] = "center"
         self.chk_Duration["text"] = "  DURATION (m)"
         self.chk_Duration["offvalue"] = False
@@ -922,8 +933,7 @@ class WorkstationDataRecorder_GUI:
         # self.chk_Duration.place(x=235,y=205,width=150,height=25) # TODO: uncomment to add duration back to gui
         self.entry_duration = tk.Entry(self.root) #TODO: Obsolete
         self.entry_duration["borderwidth"] = "1px"
-        ft = tkFont.Font(family='Verdana',size=10)
-        self.entry_duration["font"] = ft
+        self.entry_duration["font"] = self.labelFont
         self.entry_duration["fg"] = "#333333"
         self.entry_duration["justify"] = "center"
         self.entry_duration["textvariable"] = self.duration
@@ -943,15 +953,13 @@ class WorkstationDataRecorder_GUI:
             lbl["activebackground"] = "#383838"
             lbl["anchor"] = "w"
             lbl["bg"] = "#383838"
-            ft = tkFont.Font(family='Verdana',size=10)
-            lbl["font"] = ft
+            lbl["font"] = self.labelFont
             lbl["fg"] = "light gray"
             lbl["justify"] = "center"
         for ent in self.sourceEntryList:
             idx = self.sourceEntryList.index(ent)
             ent["borderwidth"] = "1px"
-            ft = tkFont.Font(family='Verdana',size=10)
-            ent["font"] = ft
+            ent["font"] = self.labelFont
             ent["fg"] = "#333333"
             ent["justify"] = "center"
             ent["textvariable"] = self.ipAddresses[idx]
@@ -962,9 +970,8 @@ class WorkstationDataRecorder_GUI:
                 txt = f"WS{idx+1:02}"
             else:
                 txt = f"Sh{idx - 9:02}"
-            ft = tkFont.Font(family='Verdana',size=10)
             chk["text"] = txt
-            chk["font"] = ft
+            chk["font"] = self.labelFont
             chk["fg"] = "#333333"
             chk["justify"] = "center"
             chk["offvalue"] = False

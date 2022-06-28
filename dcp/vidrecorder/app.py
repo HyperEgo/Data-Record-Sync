@@ -1,5 +1,6 @@
 import os
 import sys
+import grp
 import getopt
 import configparser
 
@@ -12,8 +13,11 @@ from PlaybackWindow_GUI import PlaybackWindow_GUI
 import utils.vidlogging as vidlogging
 
 application_name = "Workstation Recorder"
-version_code = "0.1.5"
+version_code = "0.1.6"
 version_config = g.config.get('version_info','versionNumber')
+user = os.environ['USER']
+group_info = grp.getgrnam('ibcs')
+is_member_ibcs = user in group_info.gr_mem
 
 # Setup loggers
 logger = vidlogging.get_logger(__name__,filename=g.paths['logfile'])
@@ -77,9 +81,9 @@ def main(argv):
             return
 
 def run_app(use_full_gui=True):
-    logger.info("----------------------------------------------------")
-    logger.info(f"{application_name} executed")
-    logger.info("----------------------------------------------------")
+    logger.info("--------------------------------------------------------------------------")
+    logger.info(f"{application_name} executed -- USER: {user} -- IBCS group: {is_member_ibcs}")
+    logger.info("-------------------------------------------------------------------------")
     root = tk.Tk()
     if use_full_gui:
         app = WorkstationDataRecorder_GUI(root,g.config)

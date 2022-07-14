@@ -48,3 +48,19 @@ def set_group(path,group="ibcs"):
 def set_permissions(path,octval):
     # Set permissions on the file
     os.chmod(path,octval)
+
+def fileparts(path):
+    """Returns (dir,filename,extension) of path
+
+    Args:
+        path (string): path to file, absoulte or relative
+
+    Returns:
+        tuple : (dir,filename,extension) of path, all strings
+    """
+    dirname = os.path.dirname(path)
+    basename_with_ext = os.path.basename(path)
+    basename = os.path.basename(basename_with_ext).split('.',1)[0]
+    ext = os.path.splitext(path)[1]
+    return (dirname,basename,ext) # matlab style,
+

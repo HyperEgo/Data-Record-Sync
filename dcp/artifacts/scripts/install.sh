@@ -5,6 +5,9 @@
 ARTS='/data_local/dcp/artifacts'
 REPO='/data_local/dcprepo'
 
+# decompress tar archive
+tar -zxvf $ARTS/dcp_archives.tgz
+
 # install rpms
 mkdir -p $REPO
 find $ARTS/archives/rpms -iname "*.rpm" -exec cp -ar '{}' $REPO/. \;
@@ -14,6 +17,7 @@ createrepo .
 yum clean all
 yum makecache
 yum install -y * --nogpgcheck
+#rpm -ivh * --nodeps  # install via rpm package manager, ignore deps
 #sed -i 's/enabled = 1/enabled = 0/' /etc/yum.repos.d/IBCS-other.repo
 
 # upgrade pip3, install wheels

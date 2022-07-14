@@ -1,11 +1,11 @@
 [version_info]
-versionNumber = 0.1.6
+versionNumber = 0.1.5
 
 [dcp_config]
-disk_A_Location = /data_local/dcp/data/dd1
-disk_B_Location = /data_local/dcp/data/dd2
-defaultSaveLocation = /data_local/dcp/data/dd1
-disk_reserve = 0.5
+disk_A_Location = /mnt/dd1
+disk_B_Location = /mnt/dd2
+defaultSaveLocation = /mnt/dd1
+disk_reserve = 0.9995
 WS1 = 192.168.5.71
 WS2 = 192.168.5.72
 WS3 = 192.168.5.73
@@ -20,13 +20,19 @@ WS11 = shelter 1 IP
 WS12 = shelter 2 IP
 
 [advanced_settings]
-ping_rna_onlaunch = True
+ping_rna_onlaunch = False
 ping_rna_onlaunch_count = 2
 ping_rna_timeout_sec = 1
 restart_interval = 5
-video_chunking_enabled = True
-video_chunking_duration_in_minutes = 60
+video_chapters_enabled = True
+video_chapters_duration_in_minutes = 1
+video_chapters_overlap_in_minutes = 0.5
 delete_chapters_per_ws = 2
+
+[logs]
+dir = /home/cholland/devrepo/dcp/vidrecorder/logs
+group = ibcs
+permissions = 0o777
 
 [dev_tools]
 devMode = 1

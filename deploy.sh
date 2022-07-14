@@ -1,22 +1,22 @@
 #!/bin/bash
 
-# setup and install for DCP media deploy
+# setup, install DCP application files
 
 # constants
 OWNER=$USER
 PERMS=777
 GRP=ibcs
 SCRIPTS='/data_local/dcp/artifacts/scripts'
-APPHOME="/data_local"
+HOME="/data_local"
 
-# configure application home directory
+# deploy application artifacts
 echo -e "Copying application files..\nPlease wait, this may take a while.\n"
-sudo cp -ar "dcp" $APPHOME
+sudo cp -R "dcp" $HOME
 echo -e "Preparing storage disks.\n"
 sudo sh $SCRIPTS/mounts.sh
-sudo chown -R $OWNER $APPHOME/dcp
-sudo chgrp -R $GRP $APPHOME/dcp
-sudo chmod -R $PERMS $APPHOME/dcp
+sudo chown -R $OWNER $HOME/dcp
+sudo chgrp -R $GRP $HOME/dcp
+sudo chmod -R $PERMS $HOME/dcp
 echo -e "Installing dependencies.\n"
 $SCRIPTS/auto_start.sh
 echo -e "DCP Installation Complete.\n"

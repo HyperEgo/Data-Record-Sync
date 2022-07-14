@@ -13,7 +13,7 @@ import time
 
 from global_vars import g
 from utils import utils
-from VidRecorder2 import VidRecorder2
+from VidRecorder import VidRecorder
 from PlaybackWindow_GUI import PlaybackWindow_GUI as playbackGUI
 import utils.vidlogging as vidlogging
 import libs.modifiedTKV as tkVid
@@ -42,14 +42,10 @@ class WorkstationDataRecorder_GUI:
         curdir = os.getcwd()
         self.parentDirectory = StringVar()
         self.recorder = None
+        self.ip_info = {} # dict, matches each ip address to its wid, valid_ping, and valid_format
 
         self.playWin_toplevel = None
         self.instructionWindow = None
-
-        # Fonts
-        self.labelFont = tkFont.Font(family='Verdana',size=-14)
-        self.headerFont = tkFont.Font(family='Verdana',size=-32)
-
         # timestamps for generating test logs
         self.begin = None
         self.end = None
@@ -144,42 +140,68 @@ class WorkstationDataRecorder_GUI:
             lbl["justify"] = "center"
             lbl["fg"] = "light gray"
             lbl["background"] = "#383838"
-            lbl["font"] = self.labelFont
+            lbl["font"] = tkFont.Font(family='Verdana',size=-14)
             lbl.place(x=xPos,y=yPos)#,width=70,height=30)
             yPos += 35
 
     def updateStatusLabels(self,workstation_info,record_state=None):
+        print(f'Inside updateStatusLabels -- record state: {record_state}')
+        # workstation_info is list of dicts from VidRecorder.get_workstation_info
+        # workstation_info[i]['update_stats'] is corresponding dict from DriveManager.calc_chapter_stats
         for w in workstation_info:
-            wid = w['id']
-            filestats = w['filestats']
+            # print(w)
+            wid = w['wsid_int']
+            update_stats = w['last_update_stats']
+            # no_processes = not any(w["process_info"])
+            no_processes = (not w["process_info"]["main"] and
+                            not w["process_info"]["overlap"])
+
+            short_desc = w["short_desc"]
+            current_state = w["current_state"]
+            chapter_count = w["chapter_count"]
+            chapter_size_main = w["chapter_size_main"]
+            total_vid_size = w["total_vid_size"]
+            # update_stats_all_None = all([info == None for info in update_stats['process_info']])
+
+            print(short_desc)
+            # process = w['process_info']['main']
+            # line += '   main    : '
+            # if process:
+            #     line = f'{process.one_line_desc()}\n'
+            # process = w['process_info']['overlap']
+            # line += '   overlap : '
+            # if process:
+            #     line += f'{process.one_line_desc()}\n'
+            # print(line)
+
             lbl_idx = wid-1
             if lbl_idx >= 0 and lbl_idx < len(self.statusLabelList):
                 lbl = self.statusLabelList[lbl_idx]
-                if record_state == 'started' and filestats == None:
+                if record_state == 'started' and no_processes:
                     text = "Pending..."
-                elif record_state == 'sdp_download' and filestats == None and w['sdp_downloaded'] == False:
+                # elif record_state == 'sdp_download' and update_stats_all_None and w['sdp_downloaded'] == False:
+                elif record_state == 'sdp_download' and no_processes and w['sdp_downloaded'] == False:
                     text = f'Workstation SDP download failed.'
-                elif record_state == 'sdp_download' and filestats == None and w['sdp_downloaded'] == True:
+                # elif record_state == 'sdp_download' and update_stats_all_None and w['sdp_downloaded'] == True:
+                elif record_state == 'sdp_download' and no_processes and w['sdp_downloaded'] == True:
                     text = f'Workstation SDP download success.'
-                # elif record_state == 'started' and filestats and filestats['size'] == 0: # w['filestats']['size']
-                #     text = f"Establishing connection. Please wait..."
-                # elif record_state == 'started':
-                #     text = f"Recording... | File size: {utils.bytesto(filestats['size'], 'mb'):.2f} MB"
-                #     self.stopWatch.Start()
                 elif record_state == 'started' and not w['is_recording']: # w['filestats']['size']
                     text = f"Establishing connection. Please wait..."
                 elif record_state == 'started' and w['is_recording']:
-                    if filestats:
-                        text = f"Recording... | " \
-                               f"{utils.bytesto_string(filestats['chapter_size'])} / {utils.bytesto_string(filestats['size'])} ({filestats['chapter_count']})"
-                        self.stopWatch.Start()
+                    # if ws_stats and ws_stats['filestats'] != None:
+                    text = f"Recording... | " \
+                        f"{utils.bytesto_string(chapter_size_main)} / {utils.bytesto_string(total_vid_size)} ({w['chapter_count']})"
+                        # self.stopWatch.Start()
                 elif record_state == 'stopped':
-                    if filestats:
-                        text = f"Stopped | File size: {utils.bytesto_string(filestats['size'])}"
+                    # if ws_stats:
+                    text = f"Stopped | File size: {utils.bytesto_string(total_vid_size)}"
                     # self.stopWatch.Stop()
                 else:
-                    text = 'ERROR: Unknown recording state in gui'
+                    text = f'({record_state}|{no_processes}|{w["sdp_downloaded"]})'
+                    print(w["process_info"])
+                    # text = f'ERROR: Unknown recording state in gui'
 
+                print(text)
                 lbl.configure(text = text)
 
     def openPlayback(self, _class):#TODO: Obsolete. Should be broken off into a separate app.
@@ -225,6 +247,8 @@ class WorkstationDataRecorder_GUI:
             ips[ip] = {'wid': idx+1, 'valid_format': valid_format, 'valid_ping': valid_ping}
             if update_labels:
                 self.update_ip_status_labels(ips[ip],run_ping_test)
+
+        self.ip_info = ips
         return ips
 
     def update_ip_status_labels(self,ip_info,ping_test=False):
@@ -260,17 +284,19 @@ class WorkstationDataRecorder_GUI:
             imageObj["image"] = self.img_dark
             tooltipObj = tooltip.CreateToolTip(imageObj, "Invalid")
 
-    def get_selected_workstations(self,savedir): #TODO: Will be obsolete. Need to just record all connected devices when Vidrecorder starts.
+    def get_selected_workstations(self): #TODO: Will be obsolete. Need to just record all connected devices when Vidrecorder starts.
         workstations = []
 
         for idx,src in enumerate(self.ipAddresses):
             ip = src.get()
-            if(self.workstationBoolList[idx].get() == True): # if checkbox for workstation is selected
+            workstation_selected = self.workstationBoolList[idx].get() == True
+            workstation_valid_ping = self.ip_info[ip]['valid_ping'] == True if ip in self.ip_info.keys() else False
+            if workstation_selected:
                 workstations.append(
                     {
                         "id": int(ip[-2:]) % 70 if len(ip) > 2 else -1,
                         "ip": ip,
-                        "restart_interval": g.advanced['restart_interval'],
+                        "valid_ping": workstation_valid_ping,
                         # "dir": wsDirectory
                     }
                 )
@@ -278,30 +304,32 @@ class WorkstationDataRecorder_GUI:
         return workstations
 
 
-    def startRecordAll(self): #TODO: Will be obsolete once functionality is moved. Update will probably be sent to GUI elsewhere.
+    def startRecordAll(self, valid_pings_only=True): #TODO: Will be obsolete once functionality is moved. Update will probably be sent to GUI elsewhere.
 
         logger.debug(f'startRecordAll')
 
-        # Get and validate duration from gui
-        self.duration = 0
-        if(self.bool_useDuration.get() == True):
-            value,valid = self.get_float_from_entrybox(self.entry_duration,"Duration")
-            logger.debug(f'Duration: value -> {value} -- valid -> {valid}')
-            if valid:
-                if value > 0:
-                    self.duration = value
-                else:
-                    messagebox.showinfo('Input Error', f'Invalid Duration Value. Must be greater then 0', parent=self.root)
-                    return
-            else:
-                return
+        # # Get and validate duration from gui
+        self.duration = 0 # TODO: Obsolete .. remove all references to this when able
 
         # Make sure user has selected workstations to be recorded before proceeding
         # Get list of selected workstations
-        workstations = self.get_selected_workstations(savedir=self.parentDirectory) #TODO: Obsolete when autostart is implemented. All connected WS's will be recorded.
+        workstations = self.get_selected_workstations() #TODO: Obsolete when autostart is implemented. All connected WS's will be recorded.
         if len(workstations) <= 0:
             messagebox.showinfo('Input Error', 'No workstations selected', parent=self.root)
             return
+
+        # Make sure the ips have been pinged before proceeding
+        any_valid_pings = True
+        # TODO: put this back in after developing
+        # any_valid_pings = False
+        # for ws in workstations:
+        #     if ws['valid_ping']:
+        #         any_valid_pings = True
+        #         break
+        # if not any_valid_pings:
+        #     messagebox.showinfo('Input Error', 'No valid pings. Run File->Ping RNAs', parent=self.root)
+        #     return
+
         logger.debug(f'selected workstations: {workstations}')
 
         # Mark start of record time
@@ -309,10 +337,9 @@ class WorkstationDataRecorder_GUI:
 
         # Create the almighty VidRecorder object -- this guys manages all of the DeviceRecorders
         if (self.recorder is None):
-            # use_dev_dir  = self.config.get('dev_tools','devDirectory') == "1"
             use_dev_dir  = g.dev_opts['devDirectory']
-            self.recorder = VidRecorder2(workstations, hdd=g.paths['hdd'], sdpdir=g.paths['sdpdir'],
-                                        duration=self.duration, update_callback=self.on_vidrecorder_update, use_dev_dir=use_dev_dir)
+            self.recorder = VidRecorder(workstations, hdd=g.paths['hdd'], duration=self.duration,
+                update_callback=self.on_vidrecorder_update, use_dev_dir=use_dev_dir)
 
         # Clear all of the status labels before trying to start the recorders
         self.clearAllStatusLabels()
@@ -362,7 +389,6 @@ class WorkstationDataRecorder_GUI:
 
         # Stop the vidrecorder
         if (self.recorder and self.recorder.is_recording):
-            logger.debug(f'duration: {self.recorder.duration}')
             logger.debug(f'self.recorder.is_recording is True -- calling self.recorder.stop()')
             self.recorder.stop()
 
@@ -422,7 +448,8 @@ class WorkstationDataRecorder_GUI:
                     self.diskLabelList_Space[i]["fg"] = "black"
                     self.diskLabelList_Warning[i]['text']= ""
 
-
+                # drive_info['stats']
+                # usage(total=7620804153344, used=11235618816, free=7225476755456)
                 freespace = utils.bytesto(drive_info['stats'].free,'gb')
                 storage_text = f"{freespace:.2f} GB"
                 self.diskLabelList_Space[i]["text"] = storage_text
@@ -442,7 +469,6 @@ class WorkstationDataRecorder_GUI:
             logger.info('---------------------------------')
             logger.info('RECORDING STOPPED -- update to gui here')
             logger.info('---------------------------------')
-            duration = update['duration']
             workstation_info = update['workstation_info']
 
             # Update checkboxes
@@ -723,7 +749,8 @@ class WorkstationDataRecorder_GUI:
         self.label_SwTitle=tk.Label(self.root)
         self.label_SwTitle["anchor"] = "center"
         self.label_SwTitle["bg"] = "#383838"
-        self.label_SwTitle["font"] = self.headerFont
+        ft = tkFont.Font(family='Verdana',size=-32)
+        self.label_SwTitle["font"] = ft
         self.label_SwTitle["fg"] = "#79a878"
         self.label_SwTitle["justify"] = "center"
         self.label_SwTitle["text"] = "WORKSTATION DATA RECORDER"
@@ -735,7 +762,6 @@ class WorkstationDataRecorder_GUI:
         self.statusFrame.place(x=505,y=120,height=200,width=380)
         self.label_stats = tk.Label(self.statusFrame)
         self.label_stats["background"] = "dark gray"
-        self.label_stats["font"] = self.labelFont
         self.label_stats.place(x=143,y=5)
         self.label_stats["text"]= "DCP STATUS"
         self.label_stats["justify"]= "center"
@@ -747,24 +773,20 @@ class WorkstationDataRecorder_GUI:
         self.label_HDD_Message_A = tk.Label(self.statusFrame)
         self.label_HDD_Message_A["background"] = "dark gray"
         self.label_HDD_Message_A.place(x=35,y=85)
-        self.label_HDD_Message_A["font"] = self.labelFont
         self.label_HDD_Message_A["fg"] = "dark red"
         self.label_HDD_Message_Overwrite_A = tk.Label(self.statusFrame)
         self.label_HDD_Message_Overwrite_A["background"] = "dark gray"
         self.label_HDD_Message_Overwrite_A.place(x=195,y=85)
-        self.label_HDD_Message_Overwrite_A["font"] = self.labelFont
         self.label_HDD_Message_Overwrite_A["fg"] = "dark red"
 
 
         self.label_HDD_Message_B = tk.Label(self.statusFrame)
         self.label_HDD_Message_B["background"] = "dark gray"
         self.label_HDD_Message_B.place(x=35,y=170)
-        self.label_HDD_Message_B["font"] = self.labelFont
         self.label_HDD_Message_B["fg"] = "dark red"
         self.label_HDD_Message_Overwrite_B = tk.Label(self.statusFrame)
         self.label_HDD_Message_Overwrite_B["background"] = "dark gray"
         self.label_HDD_Message_Overwrite_B.place(x=195,y=170)
-        self.label_HDD_Message_Overwrite_B["font"] = self.labelFont
         self.label_HDD_Message_Overwrite_B["fg"] = "dark red"
 
         #TODO: This can be added to the drive status message while recording over a full disk.
@@ -774,20 +796,17 @@ class WorkstationDataRecorder_GUI:
         self.label_HDD_Status = tk.Label(self.statusFrame)
         self.label_HDD_Status["background"] = "dark gray"
         self.label_HDD_Status.place(x=35,y=35)
-        self.label_HDD_Status["font"] = self.labelFont
         self.label_HDD_Status["fg"] = "black"
         self.label_HDD_Status["text"]= f"Disk A - Total Capacity: "
 
 
         self.label_Percent_Status_A = tk.Label(self.statusFrame)
         self.label_Percent_Status_A["background"] = "dark gray"
-        self.label_Percent_Status_A["font"] = self.labelFont
         self.label_Percent_Status_A["fg"] = "black"
         self.label_Percent_Status_A.place(x=35,y=60)
 
         self.label_HDD_Space = tk.Label(self.statusFrame)
         self.label_HDD_Space["background"] = "dark gray"
-        self.label_HDD_Space["font"] = self.labelFont
         self.label_HDD_Space["fg"] = "black"
         self.label_HDD_Space.place(x=205,y=35)
         self.Active_Image = Label(self.statusFrame,image=self.img_green,borderwidth=0) #TODO: Adjust image to remove background.
@@ -797,25 +816,21 @@ class WorkstationDataRecorder_GUI:
         self.label_Active_HDD = tk.Label(self.statusFrame)
         self.label_Active_HDD["text"] = "(Active)"
         self.label_Active_HDD["background"] = "dark gray"
-        self.label_Active_HDD["font"] = self.labelFont
         self.label_Active_HDD["fg"] = "dark green"
 
         self.label_HDD_Status_2 = tk.Label(self.statusFrame)
         self.label_HDD_Status_2["background"] = "dark gray"
         self.label_HDD_Status_2.place(x=35,y=120)
-        self.label_HDD_Status_2["font"] = self.labelFont
         self.label_HDD_Status_2["fg"] = "black"
 
         self.label_Percent_Status_B = tk.Label(self.statusFrame)
         self.label_Percent_Status_B["background"] = "dark gray"
-        self.label_Percent_Status_B["font"] = self.labelFont
         self.label_Percent_Status_B["fg"] = "black"
         self.label_Percent_Status_B.place(x=35,y=145)
 
         self.label_HDD_Status_2["text"]= f"Disk B - Total Capacity: "
         self.label_HDD_Space_2 = tk.Label(self.statusFrame)
         self.label_HDD_Space_2["background"] = "dark gray"
-        self.label_HDD_Space_2["font"] = self.labelFont
         self.label_HDD_Space_2["fg"] = "black"
         self.label_HDD_Space_2.place(x=205,y=120)
 
@@ -873,7 +888,8 @@ class WorkstationDataRecorder_GUI:
         self.label_SaveDest["activebackground"] = "#383838"
         self.label_SaveDest["anchor"] = "w"
         self.label_SaveDest["bg"] = "#383838"
-        self.label_SaveDest["font"] = self.labelFont
+        ft = tkFont.Font(family='Verdana',size=-14)
+        self.label_SaveDest["font"] = ft
         self.label_SaveDest["fg"] = "light gray"
         self.label_SaveDest["justify"] = "center"
         self.label_SaveDest["text"] = "Save Directory: "
@@ -881,7 +897,8 @@ class WorkstationDataRecorder_GUI:
 
         self.entry_SaveDir=tk.Entry(self.root)
         self.entry_SaveDir["borderwidth"] = "1px"
-        self.entry_SaveDir["font"] = self.labelFont
+        ft = tkFont.Font(family='Verdana',size=-14)
+        self.entry_SaveDir["font"] = ft
         self.entry_SaveDir["fg"] = "#333333"
         self.entry_SaveDir["justify"] = "center"
         self.entry_SaveDir["text"] = ""
@@ -900,7 +917,8 @@ class WorkstationDataRecorder_GUI:
         #Record Button
         self.button_Record=tk.Button(self.root)
         self.button_Record["bg"] = "#efefef"
-        self.button_Record["font"] = self.labelFont
+        ft = tkFont.Font(family='Verdana',size=-14)
+        self.button_Record["font"] = ft
         self.button_Record["fg"] = "#000000"
         self.button_Record["justify"] = "center"
         self.button_Record["text"] = "Record"
@@ -910,7 +928,8 @@ class WorkstationDataRecorder_GUI:
         #All checkbox
         self.bool_checkedAllWorkstations = BooleanVar() #TODO: Obsolete. All available/connected WS's will record.
         self.WS_All=tk.Checkbutton(self.root)
-        self.WS_All["font"] = self.labelFont
+        ft = tkFont.Font(family='Verdana',size=-14)
+        self.WS_All["font"] = ft
         self.WS_All["fg"] = "light gray"
         self.WS_All["background"] = "#383838"
         self.WS_All["justify"] = "center"
@@ -923,7 +942,8 @@ class WorkstationDataRecorder_GUI:
 
         #Duration
         self.chk_Duration = tk.Checkbutton() #TODO: Obsolete.
-        self.chk_Duration["font"] = self.labelFont
+        ft = tkFont.Font(family='Verdana',size=-14)
+        self.chk_Duration["font"] = ft
         self.chk_Duration["justify"] = "center"
         self.chk_Duration["text"] = "  DURATION (m)"
         self.chk_Duration["offvalue"] = False
@@ -933,7 +953,8 @@ class WorkstationDataRecorder_GUI:
         # self.chk_Duration.place(x=235,y=205,width=150,height=25) # TODO: uncomment to add duration back to gui
         self.entry_duration = tk.Entry(self.root) #TODO: Obsolete
         self.entry_duration["borderwidth"] = "1px"
-        self.entry_duration["font"] = self.labelFont
+        ft = tkFont.Font(family='Verdana',size=-14)
+        self.entry_duration["font"] = ft
         self.entry_duration["fg"] = "#333333"
         self.entry_duration["justify"] = "center"
         self.entry_duration["textvariable"] = self.duration
@@ -953,13 +974,15 @@ class WorkstationDataRecorder_GUI:
             lbl["activebackground"] = "#383838"
             lbl["anchor"] = "w"
             lbl["bg"] = "#383838"
-            lbl["font"] = self.labelFont
+            ft = tkFont.Font(family='Verdana',size=-14)
+            lbl["font"] = ft
             lbl["fg"] = "light gray"
             lbl["justify"] = "center"
         for ent in self.sourceEntryList:
             idx = self.sourceEntryList.index(ent)
             ent["borderwidth"] = "1px"
-            ent["font"] = self.labelFont
+            ft = tkFont.Font(family='Verdana',size=-14)
+            ent["font"] = ft
             ent["fg"] = "#333333"
             ent["justify"] = "center"
             ent["textvariable"] = self.ipAddresses[idx]
@@ -970,8 +993,9 @@ class WorkstationDataRecorder_GUI:
                 txt = f"WS{idx+1:02}"
             else:
                 txt = f"Sh{idx - 9:02}"
+            ft = tkFont.Font(family='Verdana',size=-14)
             chk["text"] = txt
-            chk["font"] = self.labelFont
+            chk["font"] = ft
             chk["fg"] = "#333333"
             chk["justify"] = "center"
             chk["offvalue"] = False

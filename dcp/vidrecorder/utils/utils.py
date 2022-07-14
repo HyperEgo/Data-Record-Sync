@@ -1,4 +1,5 @@
 import os
+import psutil
 import re
 from pathlib import Path
 
@@ -44,7 +45,7 @@ def str2float(s):
     return val
 
 def str2int(s):
-    '''Converts 'str' to int -- returns float if valid, None if not'''
+    '''Converts 'str' to int -- returns int if valid, None if not'''
     val = None
     try:
         val = int(s)
@@ -98,6 +99,7 @@ def validate_ip(ip, run_ping_test=False, ping_timeout_sec=1, ping_count=1):
     return (valid_ip_format, valid_ping)
 
 def timetranslator(sec):
+    ''' returns formatted time string from total seconds '''
     sec = int(sec)
     hours = int(sec/3600)
     sec %= 3600
@@ -109,7 +111,7 @@ def timetranslator(sec):
 
 def show_vars(*args,**kwargs):
     print(locals())
-    
+
 def sort_files_by_creation_time(filelist):
     ''' returns list of tuples sorted by creation time, each tuple is (creation_time, path)'''
     pathlist = [Path(f) for f in filelist]
@@ -118,4 +120,20 @@ def sort_files_by_creation_time(filelist):
     return clist 
     # abs_list = [os.path.join(c[1].parent,c[1].name) for c in clist]
     # return abs_list
+
+def get_cpu_usage_pct(interval=0.5):
+    """
+    Obtains the system's average CPU load as measured over a period of 500 ms
+    :returns: System CPU load as a percentage
+    :rtype: float
+    """
+    return psutil.cpu_percent(interval)
+
+def wsid2int(wsid):
+    """ returns integer id of string wsid in the form ws## """
+    id = int(wsid[-2:])
+    return id
+
+def isempty(item):
+    return not item
 

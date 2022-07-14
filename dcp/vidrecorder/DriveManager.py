@@ -1,84 +1,162 @@
 import os
 import threading
 import shutil
+from datetime import datetime
 
+import utils.vidlogging as vidlogging
 from global_vars import g
 from utils import utils
-import utils.vidlogging as vidlogging
+from components.session import Session
+from components.session import get_all_sessions
+from components.session import get_session_stats
 
-logger = vidlogging.get_logger(__name__,filename=g.paths['logfile'])
+# logger = vidlogging.get_logger(__name__,filename=g.paths['logfile'])
+g.log['dm_logfile'] = os.path.join(g.log['dir'],'dm.log')
+logger = vidlogging.get_logger(__name__,filename=g.log['dm_logfile'])
 
 class DriveManager():
-    
+
+    # class variables
+    reserve_pct  = g.storage['reserve'] # pct of storage we are holding in reserve (not allowed to use)
+    usable_pct   = 1-g.storage['reserve'] # pct of storage we ARE allowed to use
+    warning_pct  = 0.7
+
     @classmethod
-    def parse_chapter_file_name(self,filename):
-        '''parse format <wsid>_<chunkid>_<dt>.mp4 into it's components, abs or rel paths ok'''
-        wsid = None; chunkid = None; dt = None
+    def parse_chapter_file_name(cls,filename: str):
+        """Parse format <wsid>_<chaptid>_<dt>.mp4 into it's components
+
+           Args:
+               filename: abs or rel path to chapter file
+
+           Returns: tuple(str,int,float)
+               wsid (str)    : workstation id
+               chaptid (int) : chapter id
+               dt (float)    : overlap time (not currently implemented)
+
+           Example:
+               filename = 'ws03_1234_3.6.mp4'
+               wsid,chaptid,dt = DriveManager.parse_chapter_file_name(filename)
+               # returns wsid = ws03, chaptid = 1234, dt = 3.6
+
+        """
+        wsid = None; chaptid = None; dt = None
         if filename:
             basename = os.path.basename(filename)
             parts = basename.split('_')
             if len(parts) == 1: # old filename format <wsid>.mp4
                 s = parts[0].split('.')
                 wsid = s[0]
-            elif len(parts) == 3: # new filename format <wsid>_<chunkid>_<dt>.mp4
+            elif len(parts) == 3: # new filename format <wsid>_<chaptid>_<dt>.mp4
                 wsid = parts[0]
-                chunkid = int(parts[1])
+                chaptid = int(parts[1])
                 dt = float(parts[2][0:parts[2].rfind('.')])
-        return wsid, chunkid, dt
-    
-    @classmethod
-    def print_drive_stat(cls,drive_info):
-        drive_basename = os.path.basename(drive_info['drive'])
-        stats = drive_info['stats']
-        print('--------------------------------------------------------------------------------------')
-        print(f'{drive_basename}: free {utils.bytesto(stats.free,"gb"):.2f} GB / used {utils.bytesto(stats.used,"gb"):.2f} GB / total {utils.bytesto(stats.total,"gb"):.2f} GB / {threading.current_thread().name} \n' \
-              f'     actual_capacity: {utils.bytesto(drive_info["actual_capacity"],"gb"):.2f} GB / ' \
-              f'actual_pct_used: {drive_info["actual_pct_used"]*100:.2f}% / warning at {drive_info["pct"]["warning"]*100}% / ' \
-              f'(warn,breach,harvest): {drive_info["actual_pct_used_warning"],drive_info["actual_pct_used_breach"],drive_info["harvest_needed"]} / \n' \
-              f'     max_session_id: {drive_info["max_session_id"]}, sessions: {drive_info["session_basenames"]}')
+        return wsid, chaptid, dt
 
     @classmethod
-    def print_drive_stats(cls,drive_info):
-        if type(drive_info) == list:
-            for d in drive_info:
-                cls.print_drive_stat(d)
-        else:
-            cls.print_drive_stat(drive_info)
-            
+    def delete_oldest_files(cls,n_workstations,n_chapters_per_ws=g.advanced['delete_chapters_per_ws']):
+        """Deletes a batch of the oldest chapter files over ALL the drives
+
+        Args:
+            n_workstations (int): number of recording workstations
+            n_chapters_per_ws (int, optional): number of chapters to delete per workstation.
+                                               Defaults to g.advanced['delete_chapters_per_ws'].
+
+        Returns:
+            Nothing
+
+        Note:
+            The amount of files that will be deleted is computed like so....
+            total_chapters_to_delete = n_chapters_per_ws * n_workstations
+        """
+
+        total_chapters_to_delete = n_chapters_per_ws * n_workstations
+
+        # Get all of the sessions spanning all drives
+        drive_dirs = g.paths['hdd']
+        sessions, min_session_id, max_session_id = get_all_sessions(drive_dirs) # returns sorted by basename
+
+        # Case 1: if no sessions --> return do nothing
+        if not sessions:
+            return
+
+        active_session_dir = sessions[-1].basename
+        session_cnt = len(sessions)
+
+        # Case 2: One session. Delete oldest files in session
+        if (session_cnt == 1):
+
+            # Get sorted (by creation time) list of tuples of all chapter files over all drives for active_session
+            chapter_list = cls.get_chapters_in_session(active_session_dir)
+
+            # delete oldest chapter sets on this drive
+            logger.info(f'n_workstations: {n_workstations}')
+            logger.info(f'n_chapters_per_ws: {n_chapters_per_ws}')
+            logger.info(f'total_chapters_to_delete: {total_chapters_to_delete}')
+            for tpl in chapter_list[0:total_chapters_to_delete]:
+                p = tpl[1]
+                logger.info(f' >>>>>>>>> Deleting File : {tpl}')
+                p.unlink()
+
+        # Case 3: Multiple sessions. Delete oldest session dirs until enough space has been released 
+        elif (session_cnt > 1):
+            oldest_session = sessions[0]
+            delete_list = oldest_session.fullnames
+            for directory in delete_list:
+                logger.info(f' >>>>>>>>> Deleting Session Directory: {directory}')
+                shutil.rmtree(directory)
+            return
+
+        logger.debug(f' Drives: {drive_dirs}')
+        logger.debug(f' ==== Sessions ==== cnt: {len(sessions)} -- min: {min_session_id} -- max: {max_session_id}')
+        for sess in sessions:
+            logger.debug(sess._str_long(indent=3))
+        #    logger.debug(f"   {sess_data['basename']} -- id: {sess_data['id']} -- startime: {sess_data['datetime']} -- spans: {sess_data['spans']} -- {sess_data['fullnames']}")
+        logger.debug(f'active_session_dir: {active_session_dir}')
 
     @classmethod
-    def print_chapter_stat(cls,chapter_stat):
-        print('--------------------------------------------------------------------------------------')
-        print(f'''wsid: {chapter_stat['wsid']}
-min_chapter_id: {chapter_stat['min_chapter_id']}, max_chapter_id: {chapter_stat['max_chapter_id']}
-chapter_count: {chapter_stat['chapter_count']}
-              ''')
-        chapters = chapter_stat['chapters']
-        for c in chapters:
-            print(c)
-        # filestats = {
-        #     'wsid': wsid,
-        #     'time': -1,
-        #     'size': -1, # total_filesize combining all chapters for this wsid
-        #     'basename': '', # this will be basename of last chapter file
-        #     'fullname': '', # this will be fullname of last chapter file
-        #     'chapter_size': -1, # this will be filesize of last chapter file
-        #     'chapters': chapters, # list of fullnames of all chapters with this wsid
-        #     'min_chapter_id': 0,
-        #     'max_chapter_id': 99999999,
-        #     'chunk_count': len(chapters), # TODO: remove this when you get a chance to refactor
-        #     'chapter_count': len(chapters),
-        # }
-    @classmethod
-    def print_chapter_stats(cls,chapter_stats):
-        if type(chapter_stats) == list:
-            for chapter_stat in chapter_stats:
-                cls.print_chapter_stat(chapter_stat)
-        else:
-            cls.print_chapter_stat(chapter_stats)
+    def make_free_space(cls,active_drive,n_workstations,n_chapters_per_ws=g.advanced['delete_chapters_per_ws']):
+
+        # Free up some space
+        cls.delete_oldest_files(n_workstations,n_chapters_per_ws)
+
+        # Get current state of ALL the drives
+        drive_stats = cls.get_video_storage_stats(active_drive)
+
+        # Figure out which drive stat is the active one
+        _ , active_dstat = cls.find_drive_stat(active_drive,drive_stats)
+
+        # Check the active_dstat. If there is free space then return it
+        if active_dstat['has_free_space']:
+            logger.debug(f"make_free_space() returning active_dstat['drive']: {active_dstat['drive']}")
+            return active_dstat['drive']
+
+        # Active drive is full. Find the next drive to write to.
+        next_dstat = cls.get_next_drive2(active_drive,drive_stats)
+
+        # Check the next_dstat. If there is free space then return it
+        if next_dstat['has_free_space']:
+            logger.debug(f"make_free_space() returning next_dstat['drive']: {next_dstat['drive']}")
+            return next_dstat['drive']
+
+        # If we get this far this no free space anywhere. Let's free more space
+        return cls.make_free_space(active_drive,n_workstations,n_chapters_per_ws)
+
 
     @classmethod
     def get_free_space(cls,drive_stat,n_workstations):
+        """Returns free space info of drive represented by `drive_stat`
+
+        Args:
+            drive_stat (dict): dict returned by get_video_storage_stats
+            n_workstations (int): currently unused # TODO: remove this?
+
+        Returns: tuple (int,bool)
+            bytes_available_gb (int): number of free bytes on the drive
+            has_free_space (bool): True if free space exists, False otherwise
+        """
+
+        if isinstance(drive_stat,str): # assume its a drive path instead of drive_stat
+            pass
 
         actual_capacity = drive_stat['actual_capacity']
         actual_pct_used = drive_stat['actual_pct_used']
@@ -89,105 +167,42 @@ chapter_count: {chapter_stat['chapter_count']}
         has_free_space = not drive_stat['actual_pct_used_breach']
 
         return bytes_available_gb, has_free_space
-    
-    @classmethod
-    def make_free_space(cls,drive_stat,n_chapter_blocks,n_workstations,from_session_id,chapter_list=None):
-        '''Free up "n_chapter_blocks" of space on this drive
 
-           Algorithm:
-           Case 1: if no sessions --> return do nothing
-           Case 2: if multiple sessions --> delete oldest sessions until enough space has been released 
-           Case 3: if one session -->
-                     delete "n_chapter_blocks" worth of files in the session
-        '''
-
-        drive = drive_stat['drive']
-        sessions = drive_stat['session_basenames']
-        sessions.sort()
-        
-        # Case 1: if no sessions --> return do nothing
-        if not sessions: 
-            return
-
-        # Case 2: if multiple sessions --> delete oldest sessions until enough space has been released 
-        if len(sessions) > 1:
-            delete_list = []
-            total_files_to_delete = n_chapter_blocks*n_workstations
-            for i in range(len(sessions)-1):
-                session_dir_to_delete = os.path.join(drive,sessions[i])
-                print(f'drive: {drive} -- session_dir_to_delete: {session_dir_to_delete}')
-                delete_list.append(session_dir_to_delete)
-                ws_chapter_stats = cls.get_chapter_stats(drive,session_dir_to_delete,vid_ext='.mp4')
-                cls.print_chapter_stats(ws_chapter_stats)
-                total_chapter_count = 0
-                for ws_chapter_stat in ws_chapter_stats:
-                    total_chapter_count += ws_chapter_stat['chapter_count']
-                if total_chapter_count >= total_files_to_delete:
-                    break
-                else:
-                    total_files_to_delete -= total_chapter_count
-                print(f'total_files_to_delete: {total_files_to_delete} -- {total_chapter_count}')
-                    
-            print(f'delete_list: {delete_list}')
-            for directory in delete_list:
-                shutil.rmtree(directory)
-            
-        else: # only one session
-            # Case 3: if one session -->
-            #         delete "n_chapter_blocks" worth of files in the session
-            
-            one_session_id = drive_stat['max_session_id']
-            if (from_session_id != one_session_id):
-                session_dir = os.path.join(drive,sessions[0])
-                shutil.rmtree(session_dir)
-            else: 
-                # drive_dirs = g.paths['hdd']
-                session_dir = os.path.join(drive,sessions[0])
-                if not chapter_list:
-                    chosen_drive, chapter_list = cls.find_drive_by_chapter([drive],session_dir,'oldest')
-                
-                # delete oldest chapter sets on this drive
-                n_files_to_delete = n_chapter_blocks * n_workstations
-                logger.info(f'n_files_to_delete: {n_files_to_delete}')
-                for tpl in chapter_list[0:n_files_to_delete]:
-                    p = tpl[1]
-                    logger.info(f' >>>>>>>>> Deleting File : {tpl}')
-                    p.unlink()
-                # session_dir = os.path.join(drive,sessions[0])
-                # chapter_stats = cls.get_chapter_stats(drive,session_dir)
-                # for ws_chapter_stat in chapter_stats:
-                #     chapters = ws_chapter_stat['chapters']
-                #     delete_chapters = chapters[:n_chapter_blocks]
-                #     for absf in delete_chapters:
-                #         # TODO: Delete files when ready
-                #         print(f'chapter to be deleted: {absf}')
-                #         os.remove(absf)
 
     @classmethod
     def get_video_storage_stats(cls,active_drive,from_drives=g.paths['hdd']):
+        """Returns list of dicts with current status information for each drive.
+
+        Args:
+            active_drive (str): path to current active drive
+            from_drives (list of str or str, optional): list of all drive paths. Defaults to g.paths['hdd'].
+
+        Returns:
+            list of drive stats: drive stats built manually below, should refactor to it's own class
+        """
 
         video_storage = []
-        reserve_pct = g.storage['reserve']
-        usable_pct  = 1-g.storage['reserve']
-        warning_pct = 0.7
-        
+
         if type(from_drives) != list:
             from_drives = [from_drives]
         hdd = from_drives
+
         for drive in hdd:
             drive_stats = shutil.disk_usage(drive)
-            actual_capacity = drive_stats.total * usable_pct
+            # usage(total=7620804153344, used=11235618816, free=7225476755456)
+            actual_capacity = drive_stats.total * DriveManager.usable_pct
             actual_pct_used = drive_stats.used/actual_capacity
-            session_basenames, min_session_id, max_session_id = cls.get_session_stats(drive)
+            session_basenames, min_session_id, max_session_id = get_session_stats(drive)
 
+            # TODO: refactor this into it's own class
             drive_info = {
                 'drive': drive, # path to drive
                 'active': drive == active_drive, # is this the drive currently being written to?
                 'stats': drive_stats, # as returned by shutil.disk_usage
-                'pct': {'reserve': reserve_pct, 'usable': usable_pct, 'warning': warning_pct},
+                'pct': {'reserve': DriveManager.reserve_pct, 'usable': DriveManager.usable_pct, 'warning': DriveManager.warning_pct},
                 'actual_capacity': actual_capacity, # available bytes to use after reserve is taken into account
                 'actual_pct_used': actual_pct_used,
-                'actual_pct_used_warning': actual_pct_used >= warning_pct,
+                'actual_pct_used_warning': actual_pct_used >= DriveManager.warning_pct,
                 'actual_pct_used_breach': actual_pct_used >= 1,
                 'harvest_needed': actual_pct_used >= 1,
                 'session_basenames': session_basenames,
@@ -207,76 +222,75 @@ chapter_count: {chapter_stat['chapter_count']}
         # usable_free_space = hdd_1.total - (hdd_1.total * g.storage['reserve'])
         # video_storage = [{'drive': drive,'active': drive == self.cur_drive, 'stats': shutil.disk_usage(drive)} \
         #     for drive in g.paths['hdd']]
-    
-    @classmethod
-    def get_session_stats(cls,drive):
-        ''' Returns all session basenames in the drive, and the max session id on this drive '''
-        sessions = []
-        min_session_id = 99999999
-        max_session_id = 0
-        file_list = os.listdir(drive)
-        for f in file_list:
-            if os.path.isdir(os.path.join(drive,f)):
-                basename = f
-                parts = basename.split('_')
-                session_id = utils.str2int(parts[0])
-                if session_id == None:
-                    continue
-                if session_id > max_session_id:
-                    max_session_id = session_id
-                if session_id < min_session_id:
-                    min_session_id = session_id
-                sessions.append(basename)
-        sessions.sort()
 
-        return sessions, min_session_id, max_session_id
-    
     @classmethod
     def calc_chapter_stats(cls,wsid,chapters):
-        '''Compute filestats for all chapters for this wsid
+        """Compute chapter_stats for all chapters for this wsid
 
-           it is assumed "chapters" contains only chapters for this wsid
-        '''
-        filestats = {
+        Args:
+            wsid (str): ex. "ws01", "ws02", etc
+            chapters (list of str): list of abs paths to chapter files for `wsid`
+                                    it is assumed "chapters" contains only chapters for this wsid
+        Returns:
+            [list of dict]: each dict is in depth info on corresponding chapter file
+
+        """
+
+        # TODO: Refactor this into it's own class
+        chapter_stats = {
+            'wsid_int' : utils.wsid2int(wsid),
             'wsid': wsid,
             'time': -1,
             'size': -1, # total_filesize combining all chapters for this wsid
-            'basename': '', # this will be basename of last chapter file
-            'fullname': '', # this will be fullname of last chapter file
-            'chapter_size': -1, # this will be filesize of last chapter file
             'chapters': chapters, # list of fullnames of all chapters with this wsid
             'min_chapter_id': 0,
             'max_chapter_id': 99999999,
-            'chunk_count': len(chapters), # TODO: remove this when you get a chance to refactor
             'chapter_count': len(chapters),
+            'filestats': [], # one for each chapter file, last one is most recent
         }
+
         # Compute total size of the file by adding up size of all chapters for this wsid
+        # TODO: Account for overlap portions when computing total filesize
         total_filesize = 0
         min_chapter_id = 99999999
         max_chapter_id = 0
         for fullname in chapters:
             wsid, chapter_id, dt = cls.parse_chapter_file_name(fullname)
-            total_filesize += os.path.getsize(fullname)
+            chapter_size = os.path.getsize(fullname)
+            total_filesize += chapter_size # TODO: update for overlap
             if chapter_id < min_chapter_id:
                 min_chapter_id = chapter_id
             if chapter_id > max_chapter_id:
                 max_chapter_id = chapter_id
-        filestats['min_chapter_id'] = min_chapter_id
-        filestats['max_chapter_id'] = max_chapter_id
-        filestats['size'] = total_filesize
-        filestats['basename'] = os.path.basename(chapters[-1]) # this will be basename of last chapter file
-        filestats['fullname'] = chapters[-1]
-        filestats['chapter_size'] = os.path.getsize(chapters[-1])
-        return filestats
-    
+            chapter_stats['filestats'].append({
+                'basename': os.path.basename(fullname),
+                'fullname': fullname,
+                'chapter_id': chapter_id,
+                'chapter_size': chapter_size
+            })
+        chapter_stats['min_chapter_id'] = min_chapter_id
+        chapter_stats['max_chapter_id'] = max_chapter_id
+        chapter_stats['size'] = total_filesize
+
+        return chapter_stats
+
     @classmethod
     def get_chapter_stats(cls,drive_dirs,session_dir,vid_ext='.mp4'):
-        ''' Returns list of all chapter stats in the session_dir
-        
-            "drive_dirs" is a list of drive paths, caller gets to choose so be aware
-        '''
-        chapter_stats = []
-        
+        """Returns list of all chapter stats in the session_dir
+
+        Args:
+            drive_dirs (list[str]): list of drive paths
+            session_dir (str): abs or basename of session directory
+            vid_ext (str, optional): video file extension. Defaults to '.mp4'.
+
+        Returns:
+            list[dict]: each element is chapter_stats returned by calc_chapter_stats, 
+                        one for each workstation. If the session_dir spans multiple drives
+                        then it will return a chapter_stats for each workstation on each drive
+        """
+
+        all_chapter_stats = []
+
         if type(drive_dirs) != list:
             drive_dirs = [drive_dirs]
 
@@ -303,42 +317,116 @@ chapter_count: {chapter_stat['chapter_count']}
                 cur_wsid = wsid
             if cur_wsid != wsid:
                 filelist_slice = filelist[si:i]
-                filestats = cls.calc_chapter_stats(cur_wsid,filelist_slice)
-                chapter_stats.append(filestats)
+                chapter_stats = cls.calc_chapter_stats(cur_wsid,filelist_slice)
+                all_chapter_stats.append(chapter_stats)
                 si = i
                 cur_wsid = wsid
             if last_file:
                 filelist_slice = filelist[si:]
-                filestats = cls.calc_chapter_stats(cur_wsid,filelist_slice)
-                chapter_stats.append(filestats)
+                chapter_stats = cls.calc_chapter_stats(cur_wsid,filelist_slice)
+                all_chapter_stats.append(chapter_stats)
 
-        return chapter_stats
+        return all_chapter_stats
 
     @classmethod
-    def get_next_drive(cls,from_idx,drive_stats):
+    def get_next_drive2(cls,active_drive,drive_stats):
+        """Returns next drive to use after `active_drive`.
+
+        Args:
+            active_drive (str): abs path to current active drive
+            drive_stats (list[dict]): drive stats of all drives returned by get_video_storage_stats
+
+        Returns:
+            dict: drive stats of next drive to start recording on
+        """
         ndrives = len(drive_stats)
-        return drive_stats[(from_idx+1)%ndrives]
+        idx, dstat = cls.find_drive_stat(active_drive,drive_stats)
+        return drive_stats[(idx+1)%ndrives] if (not idx == None) and idx >= 0 else None
     
     @classmethod
+    def find_drive_stat(cls,drive_name,drive_stats):
+        """Returns index and stats associated with drive_name in drive_stats list
+
+        Args:
+            drive_name (str): abs path of drive we are looking for
+            drive_stats (list of dict): drive stats of all drives returned by get_video_storage_stats
+
+        Returns: tuple
+            idx (int): is index where drive_name was found in drive_stats
+            dstat (dict): drive stat dict found in drive_stats (built in get_video_storage_stats)
+        """
+        idx = dstat = None
+        for i,d in enumerate(drive_stats):
+            if d['drive'] == drive_name:
+                dstat = d
+                idx = i
+                break
+        return idx, dstat
+
+    @classmethod
+    def get_chapters_in_session(cls,session_basename,drive_dirs=g.paths['hdd']):
+        ''' Returns list of ALL chapters in 'session_basename' spanning all drives sorted by creation time
+        '''
+
+        chapter_list = []
+        for i,drive_dir in enumerate(drive_dirs):
+
+            # Build list of chapter files (fullpaths) in session_dir on drive_dir
+            session_path = os.path.join(drive_dir,session_basename)
+            file_list = os.listdir(session_path)
+            file_paths = []
+            for file in file_list:
+                path = os.path.join(session_path,file)
+                if os.path.isdir(path): # skip over sdp directory
+                    continue
+                file_paths.append(path)
+
+            # Sort them by creation time and returned as list of tuples (creation_time, file_path)
+            clist = utils.sort_files_by_creation_time(file_paths) # returns list of sorted (creation_time, file_path) tuples
+            chapter_list.extend(clist)
+
+        chapter_list.sort()
+        return chapter_list
+
+    @classmethod
     def find_drive_by_chapter(cls,drive_dirs,session_dir,criteria='newest'):
-        ''' Returns the drive and chapter_list containing either the "oldest" or "newest" chapter files by creation_time
-        
-            Note that chapter_list is a list of ALL chapters spanning "drive_dirs"
+        ''' Returns the drive containing either the "oldest" or "newest" chapter files by creation_time
+
+            Note that chapter_list is a list of ALL chapters in session_dir spanning "drive_dirs"
         '''
         chosen_drive = None
         chapter_list = []
         stored_creation_time = None
         for i,drive_dir in enumerate(drive_dirs):
+            
+            print(f'i: {i}')
+
+            # Build list of chapter files (fullpaths) in session_dir on drive_dir
             session_path = os.path.join(drive_dir,session_dir)
+            if not os.path.isdir(session_path):
+                print(f'session_path: {session_path}')
+                print(f'1st continue: {i}')
+                continue
             file_list = os.listdir(session_path)
             file_paths = []
             for file in file_list:
                 path = os.path.join(session_path,file)
                 if os.path.isdir(path): # skip over sdp
+                    print(f'2nd continue: {i}')
                     continue
                 file_paths.append(path)
+
+            # Sort them by creation time and returned as list of tuples (creation_time, file_path)
             clist = utils.sort_files_by_creation_time(file_paths) # returns list of sorted (creation_time, file_path) tuples
-            if i == 0: 
+            # TODO: Investigate potential bugs here when session directories exist without files in them
+            if not clist:
+                print(f'3rd continue: {i}')
+                continue
+
+            print(f'i: {i} -- stored_creation_time: {stored_creation_time}')
+            # Add clist to giant chapter_list (all chapters spanning drive_dirs in session_dir)
+            # if i == 0: # if first drive
+            if not stored_creation_time:
                 if criteria == 'oldest':
                     stored_creation_time = clist[0][0]
                 elif criteria == 'newest':
@@ -348,136 +436,213 @@ chapter_count: {chapter_stat['chapter_count']}
             else:
                 if criteria == 'oldest' and clist[0][0] < stored_creation_time:
                     chosen_drive = drive_dir
-                    chapter_list.extend(clist)
                 elif criteria == 'newest' and clist[-1][0] > stored_creation_time:
                     chosen_drive = drive_dir
-                    chapter_list.extend(clist)
+                chapter_list.extend(clist)
 
         chapter_list.sort()
         return chosen_drive, chapter_list
 
     @classmethod
-    def pick_best_drive(cls,active_drive,n_workstations):
+    def pick_best_drive2(cls,active_drive,n_workstations):
         ''' Returns the best drive to start the next recording session on, also returns the last session id '''
 
-        # Determine which drive we will start recording on
-        drive_stats = cls.get_video_storage_stats(active_drive)
+        # logger.debug('--------------------------------DriveManager.pick_best_drive2()------------------------------------')
+        # logger.debug(f'Active Drive: {active_drive}')
 
-        # Find the max_session_id on ALL the drives
-        max_session_id = 0
-        max_session_drive = drive_stats[0]
-        max_session_drive_idx = 0
-        for i,dstats in enumerate(drive_stats):
-            if dstats['max_session_id'] > max_session_id:
-                max_session_id = dstats['max_session_id']
-                max_session_drive = dstats
-                max_session_drive_idx = i
-
-        if max_session_id == 0:
-            print('=================================================')
-            print('NO SESSIONS STORED ON EITHER DRIVE')
-            print(f'max_session_id: {max_session_id} -- max_session_drive -- {max_session_drive["drive"]}')
-            print('Selecting "defaultSaveLocation" defined in dcp_config.txt')
-            print('=================================================')
-            return g.paths['viddir'], max_session_id
-
-        print('--------------------------------DriveManager.pick_best_drive()------------------------------------')
         chosen_drive = None
 
-        # Does the most current session dir span all of the storage drives?
-        for dstats in drive_stats:
-            span = dstats['max_session_id'] == max_session_id
-            if not span: break
+        # Get current drive snapshot
+        drive_stats = cls.get_video_storage_stats(active_drive=active_drive)
+        for drive in drive_stats:
+            if drive['active']:
+                active_drive_stat = drive
 
-        if not span:
+        drives = g.paths['hdd']
+        _, _, max_session_id = get_all_sessions(drives)
 
-            available_bytes_gb = max_session_drive['available_bytes_gb']
-            has_free_space     = max_session_drive['has_free_space']
-            print(f'has_free_space: {has_free_space} -- available_bytes_gb: {available_bytes_gb:.2f}')
+        if max_session_id == 0:
+            logger.debug('=================================================')
+            logger.debug('NO SESSIONS STORED ON ANY DRIVES')
+            logger.debug('Selecting "defaultSaveLocation" defined in dcp_config.txt')
+            logger.debug('=================================================')
+            return g.paths['viddir'], max_session_id
 
-            if has_free_space:
-                # Case 1: don't span, free space on max_session_id drive
-                #   - choose drive with max_session_id
-                #   - try to start on drive
-                print('=================================================')
-                print(f'Case 1: NO SPAN -- free space on max_session_drive')
-                print(f'max_session_id: {max_session_id} -- max_session_drive -- {max_session_drive["drive"]}')
-                print('Selecting max_session_drive')
-                print('=================================================')
-                chosen_drive = max_session_drive['drive']
+        if active_drive_stat['has_free_space']:
+            logger.debug('ACTIVE DRIVE HAS FREE SPACE')
+            chosen_drive = active_drive_stat['drive']
+        else:
+            next_drive = cls.get_next_drive2(active_drive,drive_stats)
+            if not next_drive['has_free_space']:
+                logger.debug('NO FREE SPACE -- FREEING UP SPACE')
+                chosen_drive = cls.make_free_space(active_drive,n_workstations)
             else:
-                # Case 2: don't span, no free space on max_session_id drive
-                #   - check for oldest session on other drive and delete it if exists
-                #   - choose next drive
-                #   - try to start on drive
-                # assume next is also full or empty
-                print('=================================================')
-                print(f'Case 2: NO SPAN -- no free space on max_session_id drive')
-                print(f'max_session_id: {max_session_id} -- max_session_drive -- {max_session_drive["drive"]}')
-                print('Selecting next drive and calling make_free_space')
-                print('=================================================')
-                next_drive = cls.get_next_drive(max_session_drive_idx,drive_stats)
+                logger.debug('NEXT DRIVE HAS FREE SPACE')
                 chosen_drive = next_drive['drive']
-                if not next_drive['has_free_space']:
-                    cls.make_free_space(next_drive,n_chapter_blocks=g.advanced['delete_chapters_per_ws'],n_workstations=n_workstations,from_session_id=max_session_id)
-        else: # they span
-
-            # has_free_space = [False for dstats in drive_stats]
-            # for i,dstats in enumerate(drive_stats):
-            #     has_free_space[i] = dstats['has_free_space']
-            has_free_space = [dstats['has_free_space'] for dstats in drive_stats]
-
-            if any(has_free_space):
-                # Case 3: they do span
-                #   - check each drive for free space, either one or both have free space available
-                #   - check each for newest chapter file
-                #   - choose this drive
-                #   - try to start on drive
-                drive_dirs = g.paths['hdd']
-                session_dir = drive_stats[max_session_drive_idx]['session_basenames'][-1]
-                if all(has_free_space):
-                    print('=================================================')
-                    print('Case 3a: SPAN -- all have free space')
-                    print(f'max_session_id: {max_session_id} -- max_session_drive -- {max_session_drive["drive"]}')
-                    print('Selecting drive with NEWEST chapter file set')
-                    print('=================================================')
-                    max_chapter_id = 0
-                    for drive_dir in drive_dirs:
-                        chapter_stats = cls.get_chapter_stats(drive_dir,session_dir,vid_ext='.mp4')
-                        for i,chapter_stat in enumerate(chapter_stats):
-                            if chapter_stat['max_chapter_id'] > max_chapter_id:
-                                max_chapter_id = chapter_stat['max_chapter_id']
-                                chosen_drive = drive_dir
-                else:
-                    print('=================================================')
-                    print('Case 3b: SPAN -- just one free space')
-                    print(f'max_session_id: {max_session_id} -- max_session_drive -- {max_session_drive["drive"]}')
-                    print('Selecting the one drive with free space')
-
-                    for i,free_space in enumerate(has_free_space):
-                        if free_space == True:
-                            chosen_drive = drive_stats[i]['drive']
-
-                    print(f'has_free_space: {has_free_space} -- chosen_drive: {chosen_drive}')
-                    print('=================================================')
-
-            else:
-                # Case 4: they do span
-                #   - check each drive for free space, neither of them have free space
-                #   - check each for oldest chapter file set
-                #   - choose this drive
-                #   - delete oldest chapter set on this drive
-                #   - try to start on drive
-                print('=================================================')
-                print('Case 4: SPAN -- no free space on any drive')
-                print(f'max_session_id: {max_session_id} -- max_session_drive -- {max_session_drive["drive"]}')
-                print('Selecting drive with the OLDEST chapter creation times')
-                drive_dirs = g.paths['hdd']
-                session_dir = drive_stats[max_session_drive_idx]['session_basenames'][-1]
-                chosen_drive, chapter_list = cls.find_drive_by_chapter(drive_dirs,session_dir,'oldest')
-                
-                for drive_stat in drive_stats:
-                    if drive_stat['drive'] == chosen_drive:
-                        cls.make_free_space(drive_stat,n_chapter_blocks=g.advanced['delete_chapters_per_ws'],n_workstations=n_workstations,from_session_id=max_session_id,chapter_list=chapter_list)
-
+        logger.debug(f'chosen_drive -- {chosen_drive}')
         return chosen_drive, max_session_id
+
+    #--------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------------------
+    #--------------------------------------------------------------------------------------
+    
+    @classmethod
+    def __drive_stat_to_string(cls,drive_info):
+        drive_basename = os.path.basename(drive_info['drive'])
+        stats = drive_info['stats']
+        reserve_pct = f'{(DriveManager.reserve_pct*100):.2f}'
+        actual_capacity_gb = f'{utils.bytesto(drive_info["actual_capacity"],"gb"):.2f}'
+        actual_pct_used = f'{drive_info["actual_pct_used"]*100:.2f}'
+        actual_free_gb = f'{drive_info["available_bytes_gb"]:.2f}'
+        capacity_status = f'(warn,breach,harvest): {drive_info["actual_pct_used_warning"],drive_info["actual_pct_used_breach"],drive_info["harvest_needed"]}'
+
+        # this doesn't work in unit test for some reason, I think it's process related bullshit
+        is_active = '(ACTIVE)' if drive_info['active'] == True else '        '
+
+        output = \
+f'''
+--------------------------------------------------------------------------------------
+({actual_pct_used}%)
+{drive_basename}: free {utils.bytesto(stats.free,"gb"):.2f} GB / used {utils.bytesto(stats.used,"gb"):.2f} GB / total {utils.bytesto(stats.total,"gb"):.2f} GB / {threading.current_thread().name}
+     actual: ({actual_pct_used}%) / free_gb {actual_free_gb} GB / total {actual_capacity_gb} GB / reserve {reserve_pct}% / has_free_space: {drive_info["has_free_space"]}
+     warning at {drive_info["pct"]["warning"]*100}% / {capacity_status}
+     max_session_id: {drive_info["max_session_id"]} / sessions: {drive_info["session_basenames"]}
+'''
+        for session_basename in drive_info["session_basenames"]:
+            output = f'{output}\n     {session_basename}'
+            chapter_stats = DriveManager.get_chapter_stats(drive_info['drive'],session_basename)
+            for chapter_stat in chapter_stats:
+                output = f'{output}\n{cls.__chapter_stat_to_string_short2(chapter_stat,indent=8)}'
+
+        return output
+
+    @classmethod
+    def print_drive_stat(cls,drive_info):
+        print(cls.__drive_stat_to_string(drive_info))
+
+    @classmethod
+    def print_drive_stats(cls,drive_info):
+        if type(drive_info) == list:
+            for d in drive_info:
+                cls.print_drive_stat(d)
+        else:
+            cls.print_drive_stat(drive_info)
+    
+    @classmethod
+    def __chapter_stat_to_string_short(cls,chapter_stat,indent=0):
+        # chapter_stats = {
+        #     'wsid_int' : utils.wsid2int(wsid),
+        #     'wsid': wsid,
+        #     'time': -1,
+        #     'size': -1, # total_filesize combining all chapters for this wsid
+        #     'chapters': chapters, # list of fullnames of all chapters with this wsid
+        #     'min_chapter_id': 0,
+        #     'max_chapter_id': 99999999,
+        #     'chapter_count': len(chapters),
+        #     'filestats': [], # one for each chapter file, last one is most recent
+        # }
+        # chapter_stats['filestats'].append({
+        #         'basename': os.path.basename(fullname),
+        #         'fullname': fullname,
+        #         'chapter_id': chapter_id,
+        #         'chapter_size': chapter_size
+        #     })
+        wsid  = chapter_stat['wsid']
+        idmin = chapter_stat['min_chapter_id']
+        idmax = chapter_stat['max_chapter_id']
+        cnt   = chapter_stat['chapter_count']
+        spaces = indent * ' '
+        output = \
+f'''{spaces}{wsid} | (min,max,cnt) ({idmin},{idmax},{cnt}) |'''
+        return output
+
+    @classmethod
+    def __build_chapter_range_str(cls,chapter_stat):
+        '''Returns string representing chapter_stat['filestats'] chapter_id's as a group of ranges
+        
+        Example: [0,1,2,4,6,7,8,12,13,14,15,16] would return "[0-2] [4-4] [6-8] [12-16]"
+        Note: Assumes chapter_stat['filestats'] is sorted by id
+        '''
+        range_str = ''
+
+        # filestats is a list dicts containing info about each chapter file
+        filestats = chapter_stat['filestats']
+        if not filestats: return range_str
+
+        start_id = end_id = prev_id = filestats[0]['chapter_id']
+        for x in range(1,len(filestats)):
+            chapter_id = filestats[x]['chapter_id']
+            if ((chapter_id-1) != prev_id):
+                # we have located a new block of ids
+                end_id = prev_id
+                range_str = f'{range_str} [{start_id}-{end_id}]'
+                start_id = chapter_id
+            prev_id = chapter_id
+        end_id = filestats[-1]['chapter_id']
+        range_str = f'{range_str} [{start_id}-{end_id}]'
+        return range_str
+
+    # @classmethod
+    # def __build_chapter_range_str(id_list):
+    #     '''Returns string representing id_list as a group of ranges
+    #     Example: [0,1,2,4,6,7,8,12,13,14,15,16] would return "[0-2] [4-4] [6-8] [12-16]"
+    #     '''
+    #     range_str = ''
+    #     if not id_list: return range_str
+
+    #     start_id = end_id = prev_id = id_list[0]
+    #     for x in range(1,len(id_list)):
+    #         chapter_id = id_list[x]
+    #         if ((chapter_id-1) != prev_id):
+    #             # we have located a new block of ids
+    #             end_id = prev_id
+    #             range_str = f'{range_str} [{start_id}-{end_id}]'
+    #             start_id = chapter_id
+    #         prev_id = chapter_id
+    #     end_id = id_list[-1]
+    #     range_str = f'{range_str} [{start_id}-{end_id}]'
+    #     return range_str
+
+    @classmethod
+    def __chapter_stat_to_string_short2(cls,chapter_stat,indent=0):
+        wsid  = chapter_stat['wsid']
+        idmin = chapter_stat['min_chapter_id']
+        idmax = chapter_stat['max_chapter_id']
+        cnt   = chapter_stat['chapter_count']
+        spaces = indent * ' '
+        range_str = cls.__build_chapter_range_str(chapter_stat)
+        output = \
+f'''{spaces}{wsid} | (min,max,cnt) ({idmin},{idmax},{cnt}) | {range_str}'''
+        return output
+
+    @classmethod
+    def __chapter_stat_to_string_long(cls,chapter_stat,indent=0):
+        spaces = indent * ' '
+        output = \
+f'''{spaces}--------------------------------------------------------------------------------------
+{spaces}wsid: {chapter_stat['wsid']}
+{spaces}min_chapter_id: {chapter_stat['min_chapter_id']}, max_chapter_id: {chapter_stat['max_chapter_id']}
+{spaces}chapter_count: {chapter_stat['chapter_count']}'''
+        return output
+
+
+    @classmethod
+    def print_chapter_stat(cls,chapter_stat,desc='long',indent=0):
+        if desc == 'short':
+            print(cls.__chapter_stat_to_string_short(chapter_stat,indent))
+        elif desc == 'short2':
+            print(cls.__chapter_stat_to_string_short2(chapter_stat,indent))
+        elif desc == 'long':
+            print(cls.__chapter_stat_to_string_long(chapter_stat,indent))
+
+    @classmethod
+    def print_chapter_stats(cls,chapter_stats,desc='long',indent=0):
+        if type(chapter_stats) == list:
+            for chapter_stat in chapter_stats:
+                cls.print_chapter_stat(chapter_stat,desc,indent)
+        else:
+            cls.print_chapter_stat(chapter_stats,desc,indent)
+    
+    @classmethod
+    def testlog(cls):
+        logger.debug('Does this work??????')
